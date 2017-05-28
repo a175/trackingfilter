@@ -56,7 +56,24 @@ class TrackingFilter:
         self.currentstep=300
         self.update_frame(0)
         self.showvideo()
-        
+        self.original_features={}
+        for (pos,x,y) in self.inputted_data:
+            self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
+            if pos in self.original_features:
+                self.original_features[pos] = numpy.append(self.original_features[pos], [[[x, y]]], axis = 0).astype(numpy.float32)
+            else:
+                self.original_features[pos] = numpy.array([[[x, y]]], numpy.float32)
+        for pos in self.original_features:
+            self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
+            (ret, frame) = self.original.read()
+            mask=self.get_mask(frame)
+            frame=self.apply_mask(frame,mask)
+            frame=self.apply_template_match(frame)
+            frame=self.apply_mask(frame,mask)
+            frame=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            cv2.cornerSubPix(frame, self.original_features[pos], (10, 10), (-1, -1), self.CRITERIA)
+
+            
     def run(self):
         self.select_background()
         self.select_template()
@@ -69,16 +86,6 @@ class TrackingFilter:
         print "append", pos, "to bg."
 
 
-    def append_selected_point_to_feature(self,x,y):
-        if self.features is None:
-            self.features = numpy.array([[[x, y]]], numpy.float32)
-            self.status = numpy.array([1])
-
-        else:
-            self.features = numpy.append(self.features, [[[x, y]]], axis = 0).astype(numpy.float32)
-            self.status = numpy.append(self.status, 1)
-
-        cv2.cornerSubPix(self.frame, self.features, (10, 10), (-1, -1), self.CRITERIA)
                                                                         
     def select_rectangle_by_mouse(self,event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONUP:
@@ -138,6 +145,25 @@ class TrackingFilter:
         mask = temp
         return mask
 
+    def apply_mask(self,frame,mask):
+        if not mask is None:
+            #return cv2.bitwise_and(frame,mask)                
+            return cv2.bitwise_or(frame,cv2.bitwise_not(mask))
+    def apply_template_match(self,frame):
+        template = self.template[-1]
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        res = cv2.matchTemplate(gray,template,cv2.TM_CCOEFF_NORMED)
+        s=res.shape
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        ss=hsv.shape
+        d0=(ss[0]-s[0])//2
+        d1=(ss[1]-s[1])//2
+#                hsv[d0:s[0]+d0,d1:s[1]+d1,0]=90*res
+#                hsv[d0:s[0]+d0,d1:s[1]+d1,1]=255*res
+        hsv[d0:s[0]+d0,d1:s[1]+d1,2]=255*res
+        
+        return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
     def update_frame(self,pos=None):
         if not pos is None:
             if pos>0:
@@ -150,29 +176,16 @@ class TrackingFilter:
                 print "#"," ! This is the first frame."                
         (ret, frame) = self.original.read()
         if ret:
-            self.frame = frame
             if self.currentstep>100:
                 mask=self.get_mask(frame)
-                if not mask is None:
-                    #self.frame=cv2.bitwise_and(frame,mask)                
-                    self.frame=cv2.bitwise_or(frame,cv2.bitwise_not(mask))
+                frame=self.apply_mask(frame,mask)
             if self.currentstep>200:
-                template = self.template[-1]
-                gray = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
-                res = cv2.matchTemplate(gray,template,cv2.TM_CCOEFF_NORMED)
-                s=res.shape
-                hsv = cv2.cvtColor(self.frame, cv2.COLOR_BGR2HSV)
-                ss=hsv.shape
-                d0=(ss[0]-s[0])//2
-                d1=(ss[1]-s[1])//2
-#                hsv[d0:s[0]+d0,d1:s[1]+d1,0]=90*res
-#                hsv[d0:s[0]+d0,d1:s[1]+d1,1]=255*res
-                hsv[d0:s[0]+d0,d1:s[1]+d1,2]=255*res
-                self.frame = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-                if not mask is None:
-                    self.frame=cv2.bitwise_or(self.frame,cv2.bitwise_not(mask))
-#                    self.frame=cv2.bitwise_and(self.frame,mask)
-                self.frame=cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
+                mask=self.get_mask(frame)
+                frame=self.apply_mask(frame,mask)
+                frame=self.apply_template_match(frame)
+                frame=self.apply_mask(frame,mask)
+                frame=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            self.frame = frame
         else:
             self.direction=0
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
