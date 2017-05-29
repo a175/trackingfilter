@@ -13,24 +13,36 @@ class TrackingFilter:
         self.template=[]
         self.features=None
         self.CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)
+        self.flag_mask=False
+        self.flag_templatematch=False
+        self.flag_gray=False
+
+        
         
     def select_background(self):
         print "#","1. choose backgroud frames."
         print "#","x: append the frame as bg;"
         self.event_x=self.append_current_frame_to_bg
-        self.currentstep=100
+        self.flag_mask=False
+        self.flag_templatematch=False
+        self.flag_gray=False
         self.update_frame(0)
-        self.showvideo()
-
+        flag=self.showvideo()
+        return flag
+    
     def select_template(self):
         print "#","2. choose target unit."
         print "#","mouse drag: append the rectangle;"
         self.event_x=None
         self.inputted_data=[]
         cv2.setMouseCallback("frame", self.select_rectangle_by_mouse)
-        self.currentstep=200
+        self.flag_mask=True
+        self.flag_templatematch=False
+        self.flag_gray=True
         self.update_frame(0)
-        self.showvideo()
+        flag=self.showvideo()
+        if flag <= 0:
+            return flag
         self.template=[]
         for (pos,xp,x,yp,y) in self.inputted_data:
             if yp>y:
@@ -43,19 +55,23 @@ class TrackingFilter:
                 x=t
             self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
             (ret, frame) = self.original.read()
-            cv2.imshow('template',frame[yp:y,xp:x])
+#            cv2.imshow('template',frame[yp:y,xp:x])
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             self.template.append(gray[yp:y,xp:x])
-
+        return flag
     def select_feature(self):
         print "#","3. choose target unit."
         print "#","mouse click: select the particle;"
         self.event_x=None
         self.inputted_data=[]
         cv2.setMouseCallback("frame", self.select_point_by_mouse)
-        self.currentstep=300
+        self.flag_mask=True
+        self.flag_templatematch=True
+        self.flag_gray=True
         self.update_frame(0)
-        self.showvideo()
+        flag=self.showvideo()
+        if flag <= 0:
+            return flag
         self.original_features={}
         for (pos,x,y) in self.inputted_data:
             self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
@@ -72,19 +88,31 @@ class TrackingFilter:
             frame=self.apply_mask(frame,mask)
             frame=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             cv2.cornerSubPix(frame, self.original_features[pos], (10, 10), (-1, -1), self.CRITERIA)
-
+        return flag
             
     def run(self):
-        self.select_background()
-        self.select_template()
-        self.select_feature()
-
-
+        currentstep=1
+        while currentstep > 0:
+            if currentstep==1:
+                flag=self.select_background()
+            elif currentstep==2:
+                flag=self.select_template()
+            elif currentstep==3:
+                flag=self.select_feature()
+            else:
+                break
+            if flag>0:
+                currentstep=currentstep+1
+            elif flag<0:
+                currentstep=currentstep-1
+                if currentstep==0:
+                    currentstep=1
+            else:
+                break
     def append_current_frame_to_bg(self):
         self.bg.append(numpy.copy(self.frame))
         pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
         print "append", pos, "to bg."
-
 
                                                                         
     def select_rectangle_by_mouse(self,event, x, y, flags, param):
@@ -176,14 +204,15 @@ class TrackingFilter:
                 print "#"," ! This is the first frame."                
         (ret, frame) = self.original.read()
         if ret:
-            if self.currentstep>100:
-                mask=self.get_mask(frame)
-                frame=self.apply_mask(frame,mask)
-            if self.currentstep>200:
+            if self.flag_templatematch:
                 mask=self.get_mask(frame)
                 frame=self.apply_mask(frame,mask)
                 frame=self.apply_template_match(frame)
                 frame=self.apply_mask(frame,mask)
+            if self.flag_mask:
+                mask=self.get_mask(frame)
+                frame=self.apply_mask(frame,mask)
+            if self.flag_gray:
                 frame=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             self.frame = frame
         else:
@@ -201,6 +230,7 @@ class TrackingFilter:
         print "#","p: pause at previous frame;"
         print "#","e: pause at final frame;"
         print "#","a: pause at first frame;"
+        print "#","[: previous step"
         print "#","]: next step"
         while(self.original.isOpened()):
             if self.direction>0:
@@ -214,10 +244,10 @@ class TrackingFilter:
             keyinput=cv2.waitKey(1) & 0xFF
             if keyinput == ord('q'):
                 print "#","break"
-                break
+                return 0
             elif keyinput == ord('c'):
                 print "#","break"
-                break
+                return 0
             elif keyinput == ord('p'):
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
                 pos=pos-2
@@ -252,7 +282,11 @@ class TrackingFilter:
                 print "#","frameposition", pos, "<-"
             elif keyinput == ord(']'):
                 self.direction=0
-                return
+                return 1
+            elif keyinput == ord('['):
+                self.direction=0
+                return -1
+
             elif keyinput == ord('x'):
                 print "#","x:"
                 if not self.event_x is None:
