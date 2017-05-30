@@ -7,6 +7,7 @@ class TrackingFilter:
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         self.mouse_event_note={}
         self.mouse_event_result=[]
+        self.key_event_result=[]
         self.direction=0
         (ret, self.frame) = self.original.read()
         self.bg=[]
@@ -20,30 +21,50 @@ class TrackingFilter:
         
         
     def select_background(self):
-        print "#","1. choose backgroud frames."
-        print "#","x: append the frame as bg;"
-        self.event_x=self.append_current_frame_to_bg
+        print "Choose backgroud frames."
+        print ""
+        self.key_event_result=[]
         self.flag_mask=False
         self.flag_templatematch=False
         self.flag_gray=False
-        self.update_frame(0)
-        flag=self.showvideo()
+        flag=self.showvideo(0)
+        if flag <= 0:
+            return flag
+        pos=self.key_event_result[-1]
+        print ""
+        print "``` python"
+        print "tf.append_bg(",pos,")"
+        print "```"
+        print ""
+        self.append_bg(pos)
         return flag
     
+    def append_bg(self,pos):
+        self.flag_mask=False
+        self.flag_templatematch=False
+        self.flag_gray=False
+        self.update_frame(pos,False)
+        self.bg.append(numpy.copy(self.frame))
+
+    
     def select_template(self):
-        print "#","2. choose target unit."
-        print "#","mouse drag: append the rectangle;"
+        print "Choose target unit."
+        print ""
+        print "+","mouse drag: append the rectangle;"
         self.event_x=None
         self.inputted_data=[]
         cv2.setMouseCallback("frame", self.select_rectangle_by_mouse)
         self.flag_mask=True
         self.flag_templatematch=False
         self.flag_gray=True
-        self.update_frame(0)
-        flag=self.showvideo()
+        flag=self.showvideo(0)
         if flag <= 0:
             return flag
-        self.template=[]
+
+        print ""
+        print "``` python"
+        self.reset_template()
+        print "tf.reset_template()"
         for (pos,xp,x,yp,y) in self.inputted_data:
             if yp>y:
                 t=yp
@@ -53,32 +74,52 @@ class TrackingFilter:
                 t=xp
                 xp=x
                 x=t
-            self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
-            (ret, frame) = self.original.read()
-#            cv2.imshow('template',frame[yp:y,xp:x])
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            self.template.append(gray[yp:y,xp:x])
+            self.append_template(pos,xp,x,yp,y)
+            print "tf.reset_template(",pos,",",xp,",",x,",",yp,",",y,")"
+        print "```"
+        print ""
         return flag
+    def reset_template(self):
+        self.template=[]
+    def append_template(self,pos,xp,x,yp,y):
+        self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
+        (ret, frame) = self.original.read()
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        self.template.append(gray[yp:y,xp:x])
+
     def select_feature(self):
-        print "#","3. choose target unit."
-        print "#","mouse click: select the particle;"
+        print "Choose target unit."
+        print ""
+        print "+","mouse click: select the particle;"
         self.event_x=None
         self.inputted_data=[]
         cv2.setMouseCallback("frame", self.select_point_by_mouse)
         self.flag_mask=True
         self.flag_templatematch=True
         self.flag_gray=True
-        self.update_frame(0)
-        flag=self.showvideo()
+        flag=self.showvideo(0)
         if flag <= 0:
             return flag
-        self.original_features={}
+        print ""
+        print "``` python"
+        self.reset_original_features()
+        print "tf.reset_original_features()"
         for (pos,x,y) in self.inputted_data:
-            self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
-            if pos in self.original_features:
-                self.original_features[pos] = numpy.append(self.original_features[pos], [[[x, y]]], axis = 0).astype(numpy.float32)
-            else:
-                self.original_features[pos] = numpy.array([[[x, y]]], numpy.float32)
+            self.append_original_features(pos,x,y)
+            print "tf.append_original_features(",pos,",",x,",",y,")"
+        self.adjust_original_features()
+        print "tf.adjust_original_features()"
+        print "```"
+        print ""
+        return flag
+    def reset_original_features(self):
+        self.original_features={}
+    def append_original_features(self,pos,x,y):
+        if pos in self.original_features:
+            self.original_features[pos] = numpy.append(self.original_features[pos], [[[x, y]]], axis = 0).astype(numpy.float32)
+        else:
+            self.original_features[pos] = numpy.array([[[x, y]]], numpy.float32)
+    def adjust_original_features(self):
         for pos in self.original_features:
             self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
             (ret, frame) = self.original.read()
@@ -88,11 +129,12 @@ class TrackingFilter:
             frame=self.apply_mask(frame,mask)
             frame=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             cv2.cornerSubPix(frame, self.original_features[pos], (10, 10), (-1, -1), self.CRITERIA)
-        return flag
-            
+        
     def run(self):
         currentstep=1
         while currentstep > 0:
+            print "Step", currentstep
+            print "==========="
             if currentstep==1:
                 flag=self.select_background()
             elif currentstep==2:
@@ -100,6 +142,7 @@ class TrackingFilter:
             elif currentstep==3:
                 flag=self.select_feature()
             else:
+                print "end."
                 break
             if flag>0:
                 currentstep=currentstep+1
@@ -109,10 +152,7 @@ class TrackingFilter:
                     currentstep=1
             else:
                 break
-    def append_current_frame_to_bg(self):
-        self.bg.append(numpy.copy(self.frame))
-        pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-        print "append", pos, "to bg."
+            print "\n***\n"
 
                                                                         
     def select_rectangle_by_mouse(self,event, x, y, flags, param):
@@ -124,7 +164,7 @@ class TrackingFilter:
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
             self.inputted_data.append((pos,xp,x,yp,y))
             cv2.rectangle(self.frame, (xp, yp), (x,y), (0, 255, 255), 1)
-            print "#","rectangle: ", ((xp, yp), (x,y))
+            print "rectangle: ", ((xp, yp), (x,y))
             
         elif event == cv2.EVENT_LBUTTONDOWN:
             self.mouse_event_note["LBUTTONDOWN"]=(x,y)
@@ -151,7 +191,7 @@ class TrackingFilter:
             self.mouse_event_note["frame"]=numpy.copy(self.frame)
             cv2.rectangle(self.frame, (x-1, y-1), (x+1,y+1), (255,0, 255), 1)
             self.direction=0
-            print "#","point: ", (x,y)
+            print "point: ", (x,y)
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
             self.inputted_data.append((pos,x,y))
 
@@ -192,16 +232,17 @@ class TrackingFilter:
         
         return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
-    def update_frame(self,pos=None):
+    def update_frame(self,pos=None,verbose=True):
         if not pos is None:
-            if pos>0:
+            if pos>=0:
                 self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
             else:
                 self.direction=0
                 self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-                print "#","frameposition", pos
-                print "#"," ! This is the first frame."                
+                if verbose:
+                    print "frameposition:", pos
+                    print "*This is the first frame.*"
         (ret, frame) = self.original.read()
         if ret:
             if self.flag_templatematch:
@@ -218,68 +259,73 @@ class TrackingFilter:
         else:
             self.direction=0
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-            print "#","frameposition", pos
-            print "#"," ! This is the final frame."
+            if verbose:
+                print "frameposition:", pos
+                print "*This is the final frame.*"
             
         
-    def showvideo(self):
-        print "#","q|c: quit;"
-        print "#","f: forward;"
-        print "#","b: reverse;"
-        print "#","n: pause at next frame;"
-        print "#","p: pause at previous frame;"
-        print "#","e: pause at final frame;"
-        print "#","a: pause at first frame;"
-        print "#","[: previous step"
-        print "#","]: next step"
+    def showvideo(self,initialpos):
+        print "+","q|c: quit;"
+        print "+","f: forward;"
+        print "+","b: reverse;"
+        print "+","n: pause at next frame;"
+        print "+","p: pause at previous frame;"
+        print "+","e: pause at final frame;"
+        print "+","a: pause at first frame;"
+        print "+","w: store this frame position;"
+        print "+","[: previous step"
+        print "+","]: next step"
+        print ""
+        print "frameposition:", initialpos
+        self.update_frame(initialpos)
         while(self.original.isOpened()):
             if self.direction>0:
                 self.update_frame()
             elif self.direction<0:
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-                pos=pos-2
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                pos=pos-1
                 self.update_frame(pos)
 
             cv2.imshow('frame',self.frame)
             keyinput=cv2.waitKey(1) & 0xFF
             if keyinput == ord('q'):
-                print "#","break"
+                print "Quit"
                 return 0
             elif keyinput == ord('c'):
-                print "#","break"
+                print "Close"
                 return 0
             elif keyinput == ord('p'):
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-                pos=pos-2
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                pos=pos-1
                 self.update_frame(pos)
                 self.direction=0
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-                print "#","frameposition", pos
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                print "frameposition:", pos
             elif keyinput == ord('n'):
                 self.update_frame()
                 self.direction=0
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-                print "#","frameposition", pos
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                print "frameposition:", pos
             elif keyinput == ord('e'):
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)-1
                 self.update_frame(pos)
                 self.direction=0
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-                print "#","frameposition", pos
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                print "frameposition:", pos
             elif keyinput == ord('a'):
                 pos=0
                 self.update_frame(pos)
                 self.direction=0
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-                print "#","frameposition", pos
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                print "frameposition:", pos
             elif keyinput == ord('f'):
                 self.direction=1
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-                print "#","frameposition", pos, "->"
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                print "frameposition:", pos, "->"
             elif keyinput == ord('b'):
                 self.direction=-1
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-                print "#","frameposition", pos, "<-"
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                print "frameposition:", pos, "<-"
             elif keyinput == ord(']'):
                 self.direction=0
                 return 1
@@ -287,10 +333,10 @@ class TrackingFilter:
                 self.direction=0
                 return -1
 
-            elif keyinput == ord('x'):
-                print "#","x:"
-                if not self.event_x is None:
-                    self.event_x()
+            elif keyinput == ord('w'):
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                print "w:", pos
+                self.key_event_result.append(pos)
 
 
 
