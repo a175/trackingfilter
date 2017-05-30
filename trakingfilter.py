@@ -17,7 +17,8 @@ class TrackingFilter:
         self.flag_mask=False
         self.flag_templatematch=False
         self.flag_gray=False
-
+        self.flag_trackedpoint=False
+        self.flag_original=False
         
         
     def select_background(self):
@@ -27,6 +28,9 @@ class TrackingFilter:
         self.flag_mask=False
         self.flag_templatematch=False
         self.flag_gray=False
+        self.flag_trackedpoint=False
+        self.flag_original=False
+
         flag=self.showvideo(0)
         if flag <= 0:
             return flag
@@ -40,12 +44,9 @@ class TrackingFilter:
         return flag
     
     def append_bg(self,pos):
-        self.flag_mask=False
-        self.flag_templatematch=False
-        self.flag_gray=False
-        self.update_frame(pos,False)
-        self.bg.append(numpy.copy(self.frame))
-
+        self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
+        (ret, frame) = self.original.read()
+        self.bg.append(frame)
     
     def select_template(self):
         print "Choose target unit."
@@ -57,6 +58,9 @@ class TrackingFilter:
         self.flag_mask=True
         self.flag_templatematch=False
         self.flag_gray=True
+        self.flag_trackedpoint=False
+        self.flag_original=False
+
         flag=self.showvideo(0)
         if flag <= 0:
             return flag
@@ -79,8 +83,10 @@ class TrackingFilter:
         print "```"
         print ""
         return flag
+    
     def reset_template(self):
         self.template=[]
+        
     def append_template(self,pos,xp,x,yp,y):
         self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
         (ret, frame) = self.original.read()
@@ -97,6 +103,9 @@ class TrackingFilter:
         self.flag_mask=True
         self.flag_templatematch=True
         self.flag_gray=True
+        self.flag_trackedpoint=False
+        self.flag_original=False
+
         flag=self.showvideo(0)
         if flag <= 0:
             return flag
@@ -107,13 +116,15 @@ class TrackingFilter:
         for (pos,x,y) in self.inputted_data:
             self.append_original_features(pos,x,y)
             print "tf.append_original_features(",pos,",",x,",",y,")"
-        self.adjust_original_features()
-        print "tf.adjust_original_features()"
+#        self.adjust_original_features()
+#        print "tf.adjust_original_features()"
         print "```"
         print ""
         return flag
+    
     def reset_original_features(self):
         self.original_features={}
+        
     def append_original_features(self,pos,x,y):
         if pos in self.original_features:
             self.original_features[pos] = numpy.append(self.original_features[pos], [[[x, y]]], axis = 0).astype(numpy.float32)
@@ -129,9 +140,84 @@ class TrackingFilter:
             frame=self.apply_mask(frame,mask)
             frame=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             cv2.cornerSubPix(frame, self.original_features[pos], (10, 10), (-1, -1), self.CRITERIA)
+    def track_optical_flow_all_and_check(self):
+        print "Calculate Now."
+        print ""
         
-    def run(self):
-        currentstep=1
+        self.track_optical_flow_all(True)
+
+        print "Check tracked points."
+        print ""
+
+        self.flag_mask=False
+        self.flag_templatematch=False
+        self.flag_gray=False
+        self.flag_trackedpoint=True
+        self.flag_original=False
+
+        flag=self.showvideo(0)
+        if flag <= 0:
+            return flag
+        
+        print ""
+        print "``` python"
+        print "tf.track_optical_flow_all():"
+        print "```"
+        print ""
+        return flag
+    
+    def track_optical_flow_all(self,show=False):
+        self.tracked_point={}
+        for initpos in self.original_features:
+            self.track_optical_flow(initpos,self.original_features[initpos],1,show)
+            self.track_optical_flow(initpos,self.original_features[initpos],-1,show)
+    
+    def track_optical_flow(self,pos,features,direction,show):
+        n_frame=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
+        gray_p=None
+        while 0< pos and pos <n_frame:
+            self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
+            (ret, frame) = self.original.read()
+            if not ret:
+                break
+            mask=self.get_mask(frame)
+            mframe=self.apply_mask(frame,mask)
+            mframe=self.apply_template_match(mframe)
+            mframe=self.apply_mask(mframe,mask)
+            gray=cv2.cvtColor(mframe, cv2.COLOR_BGR2GRAY)
+            if not gray_p is None:
+                (features,status,err)=cv2.calcOpticalFlowPyrLK(
+                    gray_p,
+                    gray,
+                    features_p,
+                    None,
+                    winSize = (10, 10),
+                    maxLevel = 3,
+                    criteria = self.CRITERIA,
+                    flags = 0)
+                i = 0
+                if features is None:
+                    break
+                while i < len(features):
+                    if status[i] == 0:
+                        features = numpy.delete(features, i, 0)
+                        status = numpy.delete(status, i, 0)
+                        i -= 1
+                    i += 1
+                if show:
+                    for feature in features:
+                        cv2.circle(frame, (feature[0][0], feature[0][1]), 2, (15, 100, 255), -1, 8, 10)
+                    cv2.imshow('frame',frame)
+                    keyinput=cv2.waitKey(1) & 0xFF
+
+            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            self.tracked_point[pos]=numpy.copy(features)
+            gray_p=gray
+            features_p=features
+            pos=pos+direction
+                
+    def run(self,initstep=1):
+        currentstep=initstep
         while currentstep > 0:
             print "Step", currentstep
             print "==========="
@@ -141,6 +227,8 @@ class TrackingFilter:
                 flag=self.select_template()
             elif currentstep==3:
                 flag=self.select_feature()
+            elif currentstep==4:
+                flag=self.track_optical_flow_all_and_check()
             else:
                 print "end."
                 break
@@ -217,6 +305,8 @@ class TrackingFilter:
         if not mask is None:
             #return cv2.bitwise_and(frame,mask)                
             return cv2.bitwise_or(frame,cv2.bitwise_not(mask))
+#            f=cv2.bitwise_and(frame,cv2.bitwise_or(mask,255-15))
+#            return cv2.bitwise_or(f,cv2.bitwise_and(cv2.bitwise_not(mask),127))
     def apply_template_match(self,frame):
         template = self.template[-1]
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -243,8 +333,9 @@ class TrackingFilter:
                 if verbose:
                     print "frameposition:", pos
                     print "*This is the first frame.*"
-        (ret, frame) = self.original.read()
+        (ret, oframe) = self.original.read()
         if ret:
+            frame=oframe
             if self.flag_templatematch:
                 mask=self.get_mask(frame)
                 frame=self.apply_mask(frame,mask)
@@ -255,6 +346,14 @@ class TrackingFilter:
                 frame=self.apply_mask(frame,mask)
             if self.flag_gray:
                 frame=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            if self.flag_trackedpoint:
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                if pos in self.tracked_point:
+                    for feature in self.tracked_point[pos]:
+                        cv2.circle(frame, (feature[0][0], feature[0][1]), 1, (15, 100, 255), -1, 8, 10)
+                        cv2.circle(frame, (feature[0][0], feature[0][1]), 10, (15, 100, 255), 1)
+            if self.flag_original:
+                frame=oframe
             self.frame = frame
         else:
             self.direction=0
@@ -273,6 +372,7 @@ class TrackingFilter:
         print "+","e: pause at final frame;"
         print "+","a: pause at first frame;"
         print "+","w: store this frame position;"
+        print "+","o: toggle original/modified;"
         print "+","[: previous step"
         print "+","]: next step"
         print ""
@@ -326,6 +426,11 @@ class TrackingFilter:
                 self.direction=-1
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 print "frameposition:", pos, "<-"
+            elif keyinput == ord('o'):
+                self.flag_original=not self.flag_original
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)-1
+                self.update_frame(pos)
+                print "originalflame:", self.flag_original
             elif keyinput == ord(']'):
                 self.direction=0
                 return 1
