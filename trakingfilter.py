@@ -177,8 +177,10 @@ class TrackingFilter:
             print "If [f] or [n] is used, then optical flow will be computed."
             print ""
             self.default_direction=1
-            self.tracked_point[initpos]=self.original_features[initpos]        
+            self.tracked_point[initpos]=self.original_features[initpos]
+            
             cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
+            cv2.setMouseCallback("frame", self.edit_tracked_points_by_mouse)
             flag=self.showvideo(initpos)
             cv2.destroyWindow("frame")
             if flag <= 0:
@@ -189,6 +191,7 @@ class TrackingFilter:
             print ""
             self.default_direction=-1
             cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
+            cv2.setMouseCallback("frame", self.edit_tracked_points_by_mouse)
             flag=self.showvideo(initpos)
             cv2.destroyWindow("frame")
             if flag <= 0:
@@ -212,6 +215,7 @@ class TrackingFilter:
         mframe=self.apply_template_match(mframe)
         mframe=self.apply_mask(mframe,mask)
         gray_p=cv2.cvtColor(mframe, cv2.COLOR_BGR2GRAY)
+        #calcOpticalFlowFarneback
         (features,status,err)=cv2.calcOpticalFlowPyrLK(
             gray_p,
             gray,
@@ -220,7 +224,8 @@ class TrackingFilter:
             #winSize = (5, 5),
             winSize = (10, 10),
             #winSize = (20, 20),
-            maxLevel = 3,
+            #maxLevel = 3,
+            maxLevel = 5,
             criteria = self.CRITERIA,
             flags = 0)
         i = 0
@@ -368,6 +373,51 @@ class TrackingFilter:
             print "point: ", (x,y)
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
             self.inputted_data.append((pos,x,y))
+            
+    def add_or_remove_from_tracked_point(self, x, y, r):
+        pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+        if pos in self.tracked_point:
+            i=0
+            for feature in self.tracked_point[pos]:
+                print feature,x,y
+                if (x-feature[0][0])*(x-feature[0][0])+(y-feature[0][1])*(y-feature[0][1])<r*r:
+                    print "remove", i, feature
+                    self.tracked_point[pos] = numpy.delete(self.tracked_point[pos], i, 0)
+                    return ((feature[0][0],feature[0][1]),-1)
+                else:
+                    i=i+1
+            print "add", x,y
+            self.tracked_point[pos] = numpy.append(self.tracked_point[pos], [[[x, y]]], axis = 0).astype(numpy.float32)
+            return ((x,y),1)
+
+        else:
+            print "add", x,y, "."
+            self.tracked_point[pos]=numpy.array([[[x, y]]], numpy.float32)
+            return ((x,y),1)
+        
+    def edit_tracked_points_by_mouse(self,event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONUP:
+#            self.direction=self.mouse_event_note["direction"]
+            self.frame=numpy.copy(self.mouse_event_note["frame"])
+            (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
+            self.mouse_event_note={}
+            (pt,f)=self.add_or_remove_from_tracked_point(xp,yp,10)
+            if f>0:
+                cv2.circle(self.frame, pt, 1, (15, 100, 255), -1, 8, 10)
+                cv2.circle(self.frame, pt, 10, (15, 100, 255), 1)
+            else:
+                cv2.circle(self.frame, pt, 1, (200, 100, 0), -1, 8, 10)
+                cv2.circle(self.frame, pt, 10, (200, 100, 0), 1)
+            
+        elif event == cv2.EVENT_LBUTTONDOWN:
+            self.mouse_event_note["LBUTTONDOWN"]=(x,y)
+            self.mouse_event_note["direction"]=self.direction
+            self.mouse_event_note["frame"]=numpy.copy(self.frame)
+            cv2.rectangle(self.frame, (x-1, y-1), (x+1,y+1), (255,0, 255), 1)
+            self.direction=0
+            print "point: ", (x,y)
+            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            self.inputted_data.append((pos,x,y))
 
     def get_mask(self,frame):
         if self.bg==[]:
@@ -389,8 +439,8 @@ class TrackingFilter:
 
     def apply_mask(self,frame,mask):
         if not mask is None:
-            #return cv2.bitwise_and(frame,mask)                
-            return cv2.bitwise_or(frame,cv2.bitwise_not(mask))
+            return cv2.bitwise_and(frame,mask)                
+#            return cv2.bitwise_or(frame,cv2.bitwise_not(mask))
 #            f=cv2.bitwise_and(frame,cv2.bitwise_or(mask,255-15))
 #            return cv2.bitwise_or(f,cv2.bitwise_and(cv2.bitwise_not(mask),127))
     def apply_template_match(self,frame):
