@@ -22,6 +22,35 @@ class TrackingFilter:
         self.flag_tracking=False
         self.default_direction=0
 
+    def get_gray_image_for_template_match(self,frame):
+        if self.gray_type=="GRAY":
+            return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        elif self.gray_type=="BGR:b":
+            return numpy.copy(frame)[:,:,0]
+        elif self.gray_type=="BGR:g":
+            return numpy.copy(frame)[:,:,1]
+        elif self.gray_type=="BGR:r":
+            return numpy.copy(frame)[:,:,2]
+        elif self.gray_type=="HSV:h":
+            hsv=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            return hsv[:,:,0]
+        elif self.gray_type=="HSV:s":
+            hsv=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            return hsv[:,:,1]
+        elif self.gray_type=="HSV:v":
+            hsv=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            return hsv[:,:,2]
+    
+    def get_gray_image_for_optical_flow(self,frame):
+        gray=self.get_gray_image_for_template_match(frame)
+        return gray
+        mask=self.get_mask(frame)
+        mframe=self.apply_mask(frame,mask)
+        mframe=self.apply_template_match(mframe)
+        mframe=self.apply_mask(mframe,mask)
+#        gray=cv2.cvtColor(mframe, cv2.COLOR_BGR2GRAY)
+        return gray
+        
     def select_background(self):
         print "Choose backgroud frames."
         print ""
@@ -48,12 +77,84 @@ class TrackingFilter:
         print ""
         self.append_bg(pos)
         return flag
-    
+
     def append_bg(self,pos):
         self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
         (ret, frame) = self.original.read()
         self.bg.append(frame)
-    
+
+    def select_grayimage(self):
+        print "Choose single channel image."
+        print ""
+        self.key_event_result=[]
+        self.set_gray_type("GRAY")
+        self.flag_mask=False
+        self.flag_templatematch=False
+        self.flag_gray=True
+        self.flag_trackedpoint=False
+        self.flag_original=False
+        self.flag_filter=False
+        self.flag_tracking=False
+        self.default_direction=0
+
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        flag=self.showvideo(0,
+                            xkeyevent=self.select_grayimage_by_key,
+                            xkeyeventtitle="choose gray type")
+        cv2.destroyWindow("frame")
+        if flag <= 0:
+            return flag
+        print ""
+        print "``` python"
+        print "tf.set_gray_type(",self.gray_type,")"
+        print "```"
+        print ""
+        return flag
+
+    def set_gray_type(self,t):
+        self.gray_type=t
+        
+    def select_grayimage_by_key(self):
+        print "++ g :gray scale"
+        print "++ r :one of channels of BGR"
+        print "++ h :one of channels of HSV"
+        keyinput=cv2.waitKey(0) & 0xFF
+        if keyinput == ord('g'):
+            self.set_gray_type("GRAY")
+            print "graytype: gray"
+        elif keyinput == ord('r'):
+            keyinput=cv2.waitKey(0) & 0xFF
+            print "+++ r :R channel of BGR"
+            print "+++ g :G channel of BGR"
+            print "+++ b :G channel of BGR"
+            if keyinput == ord('r'):
+                self.set_gray_type("BGR:r")
+                print "graytype: r of BGR"
+            elif keyinput == ord('g'):
+                self.set_gray_type("BGR:g")
+                print "graytype: g of BGR"
+            elif keyinput == ord('b'):
+                self.set_gray_type("BGR:b")
+                print "graytype: b of BGR"
+        elif keyinput == ord('h'):
+            keyinput=cv2.waitKey(0) & 0xFF
+            print "+++ h :H channel of HSV"
+            print "+++ s :S channel of HSV"
+            print "+++ v :V channel of HSV"
+            if keyinput == ord('h'):
+                self.set_gray_type("HSV:h")
+                print "graytype: h of HSV"
+            elif keyinput == ord('s'):
+                self.set_gray_type("HSV:s")
+                print "graytype: s of HSV"
+            elif keyinput == ord('v'):
+                self.set_gray_type("HSV:v")
+                print "graytype: v of HSV"
+        pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+        self.update_frame(pos)
+
+                
+            
     def select_template(self):
         print "Choose target unit."
         print ""
@@ -104,7 +205,7 @@ class TrackingFilter:
     def append_template(self,pos,xp,x,yp,y):
         self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
         (ret, frame) = self.original.read()
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = self.get_gray_image_for_template_match(frame)
         self.template.append(gray[yp:y,xp:x])
 
     def select_feature(self):
@@ -205,16 +306,8 @@ class TrackingFilter:
     
     
     def track_optical_flow_between_frames(self,frame_p,frame,features_p):
-        mask=self.get_mask(frame)
-        mframe=self.apply_mask(frame,mask)
-        mframe=self.apply_template_match(mframe)
-        mframe=self.apply_mask(mframe,mask)
-        gray=cv2.cvtColor(mframe, cv2.COLOR_BGR2GRAY)
-        mask=self.get_mask(frame_p)
-        mframe=self.apply_mask(frame,mask)
-        mframe=self.apply_template_match(mframe)
-        mframe=self.apply_mask(mframe,mask)
-        gray_p=cv2.cvtColor(mframe, cv2.COLOR_BGR2GRAY)
+        gray = self.get_gray_image_for_optical_flow(frame)
+        gray_p = self.get_gray_image_for_optical_flow(frame_p)
         #calcOpticalFlowFarneback
         (features,status,err)=cv2.calcOpticalFlowPyrLK(
             gray_p,
@@ -282,7 +375,7 @@ class TrackingFilter:
             features_p=features
             pos=pos+direction
     def check_filter(self):
-        self.filter=numpy.array([[0.3*max((100-((i-10)*(i-10)+(j-10)*(j-10))),0) for j in range(20)] for i in range(20)],numpy.float32)
+        self.filter=numpy.array([[0.6*min(100,max(0,10*(100-((i-10)*(i-10)+(j-10)*(j-10))))) for j in range(20)] for i in range(20)],numpy.float32)
         self.flag_mask=False
         self.flag_templatematch=False
         self.flag_gray=False
@@ -314,12 +407,14 @@ class TrackingFilter:
             if currentstep==1:
                 flag=self.select_background()
             elif currentstep==2:
-                flag=self.select_template()
+                flag=self.select_grayimage()
             elif currentstep==3:
-                flag=self.select_feature()
+                flag=self.select_template()
             elif currentstep==4:
-                flag=self.track_optical_flow_all_and_check()
+                flag=self.select_feature()
             elif currentstep==5:
+                flag=self.track_optical_flow_all_and_check()
+            elif currentstep==6:
                 flag=self.check_filter()
             else:
                 print "end."
@@ -362,12 +457,13 @@ class TrackingFilter:
             self.frame=numpy.copy(self.mouse_event_note["frame"])
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
             self.mouse_event_note={}
-            cv2.rectangle(self.frame, (xp-1, yp-1), (xp+1,yp+1), (255,255, 255), 2)
+            cv2.rectangle(self.frame, (xp-1, yp-1), (xp+1,yp+1),(15, 100, 255), 2)
             
         elif event == cv2.EVENT_LBUTTONDOWN:
             self.mouse_event_note["LBUTTONDOWN"]=(x,y)
             self.mouse_event_note["direction"]=self.direction
             self.mouse_event_note["frame"]=numpy.copy(self.frame)
+            self.frame=numpy.copy(self.frame)
             cv2.rectangle(self.frame, (x-1, y-1), (x+1,y+1), (255,0, 255), 1)
             self.direction=0
             print "point: ", (x,y)
@@ -443,21 +539,21 @@ class TrackingFilter:
 #            return cv2.bitwise_or(frame,cv2.bitwise_not(mask))
 #            f=cv2.bitwise_and(frame,cv2.bitwise_or(mask,255-15))
 #            return cv2.bitwise_or(f,cv2.bitwise_and(cv2.bitwise_not(mask),127))
+
     def apply_template_match(self,frame):
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        hsv[:,:,2]=0
+        gray = self.get_gray_image_for_template_match(frame)
+        r = numpy.copy(frame)
+        ss=r.shape
         n=len(self.template)
         for template in self.template:
             res = cv2.matchTemplate(gray,template,cv2.TM_CCOEFF_NORMED)
             s=res.shape
-            ss=hsv.shape
             d0=(ss[0]-s[0])//2
             d1=(ss[1]-s[1])//2
-            hsv[d0:s[0]+d0,d1:s[1]+d1,2]=hsv[d0:s[0]+d0,d1:s[1]+d1,2]+255*res/n
-#                hsv[d0:s[0]+d0,d1:s[1]+d1,0]=90*res
-#                hsv[d0:s[0]+d0,d1:s[1]+d1,1]=255*res
-        return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+            r[d0:s[0]+d0,d1:s[1]+d1,2]=r[d0:s[0]+d0,d1:s[1]+d1,2]+255*res/n
+            r[d0:s[0]+d0,d1:s[1]+d1,1]=r[d0:s[0]+d0,d1:s[1]+d1,1]+255*res/n
+            r[d0:s[0]+d0,d1:s[1]+d1,0]=r[d0:s[0]+d0,d1:s[1]+d1,0]+255*res/n
+        return r
 
     def update_frame(self,pos=None,verbose=True):
         if not pos is None:
@@ -490,7 +586,10 @@ class TrackingFilter:
                 mask=self.get_mask(frame)
                 frame=self.apply_mask(frame,mask)
             if self.flag_gray:
-                frame=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                g=self.get_gray_image_for_template_match(frame)
+                frame[:,:,0]=g
+                frame[:,:,1]=g
+                frame[:,:,2]=g
             if self.flag_trackedpoint:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 if pos in self.tracked_point:
@@ -511,7 +610,7 @@ class TrackingFilter:
                 print "frameposition:", pos
                 print "*This is the final frame.*"
             
-    def showvideo(self,initialpos):
+    def showvideo(self,initialpos,xkeyevent=None, xkeyeventtitle="command mode"):
         print "+","q|c: quit;"
         print "+","f: forward;"
         print "+","b: reverse;"
@@ -524,6 +623,8 @@ class TrackingFilter:
         print "+","o: toggle original/modified;"
         print "+","[: previous step"
         print "+","]: next step"
+        if not xkeyevent is None:
+            print "+","x:", xkeyeventtitle
         print ""
         print "frameposition:", initialpos
         self.update_frame(initialpos)
@@ -596,8 +697,12 @@ class TrackingFilter:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 print "w:", pos
                 self.key_event_result.append(pos)
-
-
+            elif keyinput == ord('x'):
+                if not xkeyevent is None:
+                    print "x:", xkeyeventtitle
+                    print "+ x"
+                    xkeyevent()
+                    print "leave x:", xkeyeventtitle
 
 if __name__=="__main__":
     original=cv2.VideoCapture('a.avi')
