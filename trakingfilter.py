@@ -6,11 +6,12 @@ class TrackingFilter:
         self.original = original
         self.mouse_event_note={}
         self.mouse_event_result=[]
-        self.key_event_result=[]
         self.direction=0
         (ret, self.frame) = self.original.read()
         self.bg=[]
         self.template=[]
+        self.set_masktype("1")
+        self.set_templatematchingtype("apply")
         self.features=None
         self.CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)
         self.flag_mask=False
@@ -51,13 +52,15 @@ class TrackingFilter:
 #        gray=cv2.cvtColor(mframe, cv2.COLOR_BGR2GRAY)
         return gray
         
+
+
     def select_background(self):
         print "Choose backgroud frames."
+        print "The last frame of w_ring is used as background."
         print ""
-        self.key_event_result=[]
+        self.flag_gray=True
         self.flag_mask=False
         self.flag_templatematch=False
-        self.flag_gray=False
         self.flag_trackedpoint=False
         self.flag_original=False
         self.flag_filter=False
@@ -69,7 +72,7 @@ class TrackingFilter:
         cv2.destroyWindow("frame")
         if flag <= 0:
             return flag
-        pos=self.key_event_result[-1]
+        pos=self.key_w_ring[-1]
         print ""
         print "``` python"
         print "tf.append_bg(",pos,")"
@@ -86,7 +89,6 @@ class TrackingFilter:
     def select_grayimage(self):
         print "Choose single channel image."
         print ""
-        self.key_event_result=[]
         self.set_gray_type("GRAY")
         self.flag_mask=False
         self.flag_templatematch=False
@@ -106,7 +108,7 @@ class TrackingFilter:
             return flag
         print ""
         print "``` python"
-        print "tf.set_gray_type(",self.gray_type,")"
+        print "tf.set_gray_type(\"%s\")" % self.gray_type
         print "```"
         print ""
         return flag
@@ -154,14 +156,101 @@ class TrackingFilter:
         self.update_frame(pos)
 
                 
+    def select_masktype(self):
+        print "Choose mask type for background."
+        print ""
+        self.flag_mask=True
+        self.flag_templatematch=False
+        self.flag_gray=True
+        self.flag_trackedpoint=False
+        self.flag_original=False
+        self.flag_filter=False
+        self.flag_tracking=False
+        self.default_direction=0
+
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        flag=self.showvideo(0,
+                            xkeyevent=self.select_masktype_by_key,
+                            xkeyeventtitle="choose mask type")
+        cv2.destroyWindow("frame")
+        if flag <= 0:
+            return flag
+        print ""
+        print "``` python"
+        print "tf.set_masktype(\"%s\")" % self.masktype
+        print "```"
+        print ""
+        return flag
+
+    def select_masktype_by_key(self):
+        print "++ n :No mask"
+        print "++ 0 :Mask by black"
+        print "++ 1 :Mask by white"
+        keyinput=cv2.waitKey(0) & 0xFF
+        if keyinput == ord('n'):
+            self.set_masktype("None")
+            print "masktype: None"
+        elif keyinput == ord('0'):
+            self.set_masktype("0")
+            print "masktype: white",0
+        elif keyinput == ord('1'):
+            self.set_masktype("1")
+            print "masktype: black",1
+        pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+        self.update_frame(pos)
+        
+    def set_masktype(self,t):
+        self.masktype=t
             
+    def select_templatematchingtype(self):
+        print "Choose apply template matching or not."
+        print ""
+        self.flag_mask=True
+        self.flag_templatematch=True
+        self.flag_gray=True
+        self.flag_trackedpoint=False
+        self.flag_original=False
+        self.flag_filter=False
+        self.flag_tracking=False
+        self.default_direction=0
+
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        flag=self.showvideo(0,
+                            xkeyevent=self.select_templatematchingtype_by_key,
+                            xkeyeventtitle="choose apply template matching or not")
+        cv2.destroyWindow("frame")
+        if flag <= 0:
+            return flag
+        print ""
+        print "``` python"
+        print "tf.set_templatematchingtype(\"%s\")" % self.templatematchingtype
+        print "```"
+        print ""
+        return flag
+
+    def select_templatematchingtype_by_key(self):
+        print "++ n :Not apply"
+        print "++ a :Apply"
+        keyinput=cv2.waitKey(0) & 0xFF
+        if keyinput == ord('n'):
+            self.set_templatematchingtype("None")
+            print "Template matching: not apply"
+        elif keyinput == ord('a'):
+            self.set_templatematchingtype("apply")
+            print "Template matching: apply"
+        pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+        self.update_frame(pos)
+        
+    def set_templatematchingtype(self,t):
+        self.templatematchingtype=t
+        
     def select_template(self):
-        print "Choose target unit."
+        print "Choose template image for template matching."
         print ""
         print "+","mouse drag: append the rectangle;"
         self.event_x=None
         self.inputted_data=[]
-        self.flag_mask=True
+        self.flag_mask=False
         self.flag_templatematch=False
         self.flag_gray=True
         self.flag_trackedpoint=False
@@ -187,14 +276,14 @@ class TrackingFilter:
                 t=xp
                 xp=x
                 x=t
-            templates.append((pos,xp,x,yp,y))            
+            templates.append((pos,xp,x,yp,y))
         print ""
         print "``` python"
         self.reset_template()
         print "tf.reset_template()"
         for (pos,xp,x,yp,y) in templates:
             self.append_template(pos,xp,x,yp,y)
-            print "tf.reset_template(",pos,",",xp,",",x,",",yp,",",y,")"
+            print "tf.append_template(",pos,",",xp,",",x,",",yp,",",y,")"
         print "```"
         print ""
         return flag
@@ -399,36 +488,39 @@ class TrackingFilter:
             frame[x-10:x+10,y-10:y+10,0]=(frame[x-10:x+10,y-10:y+10,0]+self.filter)%180
         frame=cv2.cvtColor(frame, cv2.COLOR_HSV2BGR)
         return frame
-    def run(self,initstep=1):
+    def run(self,initstep=0):
+        runlevel=[
+            self.select_grayimage,
+            self.select_background,
+            self.select_masktype,
+            self.select_template,
+            self.select_templatematchingtype,
+            self.select_feature,
+            self.track_optical_flow_all_and_check,
+            self.check_filter
+        ]
         currentstep=initstep
-        while currentstep > 0:
+        while 0 <= currentstep and currentstep < len(runlevel):
             print "Step", currentstep
             print "==========="
-            if currentstep==1:
-                flag=self.select_background()
-            elif currentstep==2:
-                flag=self.select_grayimage()
-            elif currentstep==3:
-                flag=self.select_template()
-            elif currentstep==4:
-                flag=self.select_feature()
-            elif currentstep==5:
-                flag=self.track_optical_flow_all_and_check()
-            elif currentstep==6:
-                flag=self.check_filter()
-            else:
-                print "end."
-                break
+            flag=runlevel[currentstep]()
             if flag>0:
                 currentstep=currentstep+1
             elif flag<0:
                 currentstep=currentstep-1
-                if currentstep==0:
-                    currentstep=1
+                if currentstep<0:
+                    currentstep=0
             else:
+                print "Exit at Step", currentstep
+                print ""
+                print "``` python"
+                print "tf.run(",currentstep,")"
+                print "```"
+                print ""                
                 break
             print "\n***\n"
 
+        print "end."
                                                                         
     def select_rectangle_by_mouse(self,event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONUP:
@@ -515,6 +607,20 @@ class TrackingFilter:
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
             self.inputted_data.append((pos,x,y))
 
+    def get_mask_for_template_match(self,gray):
+        if self.bg==[]:
+            return None
+        operator = numpy.ones((3, 3), numpy.uint8)
+        bg = self.get_gray_image_for_template_match(self.bg[-1])
+        temp =cv2.absdiff(gray,bg)
+        temp = cv2.threshold(temp, 15, 255, cv2.THRESH_BINARY)[1]
+        temp = cv2.dilate(temp, operator, iterations=4)
+        temp = cv2.erode(temp, operator, iterations=4)
+        temp = cv2.dilate(temp, operator, iterations=4)
+        temp = cv2.erode(temp, operator, iterations=4)
+        mask = temp
+        return mask
+        
     def get_mask(self,frame):
         if self.bg==[]:
             return None
@@ -535,24 +641,23 @@ class TrackingFilter:
 
     def apply_mask(self,frame,mask):
         if not mask is None:
-            return cv2.bitwise_and(frame,mask)                
-#            return cv2.bitwise_or(frame,cv2.bitwise_not(mask))
-#            f=cv2.bitwise_and(frame,cv2.bitwise_or(mask,255-15))
-#            return cv2.bitwise_or(f,cv2.bitwise_and(cv2.bitwise_not(mask),127))
+            if self.masktype=="1":
+                return cv2.bitwise_or(frame,cv2.bitwise_not(mask))
+            elif self.masktype=="0":
+                return cv2.bitwise_and(frame,mask)
+        return numpy.copy(frame)
 
-    def apply_template_match(self,frame):
-        gray = self.get_gray_image_for_template_match(frame)
-        r = numpy.copy(frame)
-        ss=r.shape
-        n=len(self.template)
-        for template in self.template:
-            res = cv2.matchTemplate(gray,template,cv2.TM_CCOEFF_NORMED)
-            s=res.shape
-            d0=(ss[0]-s[0])//2
-            d1=(ss[1]-s[1])//2
-            r[d0:s[0]+d0,d1:s[1]+d1,2]=r[d0:s[0]+d0,d1:s[1]+d1,2]+255*res/n
-            r[d0:s[0]+d0,d1:s[1]+d1,1]=r[d0:s[0]+d0,d1:s[1]+d1,1]+255*res/n
-            r[d0:s[0]+d0,d1:s[1]+d1,0]=r[d0:s[0]+d0,d1:s[1]+d1,0]+255*res/n
+    def apply_template_match(self, gray):
+        r = numpy.copy(gray)
+        if self.templatematchingtype=="apply":
+            ss = r.shape
+            n = len(self.template)
+            for template in self.template:
+                res = cv2.matchTemplate(gray,template,cv2.TM_CCOEFF_NORMED)
+                s=res.shape
+                d0=(ss[0]-s[0])//2
+                d1=(ss[1]-s[1])//2
+                r[d0:s[0]+d0,d1:s[1]+d1]=r[d0:s[0]+d0,d1:s[1]+d1]+255*res/n
         return r
 
     def update_frame(self,pos=None,verbose=True):
@@ -577,16 +682,15 @@ class TrackingFilter:
                             self.tracked_point[pos]=features
             self.original_frame=numpy.copy(oframe)
             frame=oframe
-            if self.flag_templatematch:
-                mask=self.get_mask(frame)
-                frame=self.apply_mask(frame,mask)
-                frame=self.apply_template_match(frame)
-                frame=self.apply_mask(frame,mask)
-            if self.flag_mask:
-                mask=self.get_mask(frame)
-                frame=self.apply_mask(frame,mask)
             if self.flag_gray:
                 g=self.get_gray_image_for_template_match(frame)
+                if self.flag_mask:
+                    mask=self.get_mask_for_template_match(g)
+                if self.flag_templatematch:
+                    g=self.apply_template_match(g)
+                if self.flag_mask:
+                    g=self.apply_mask(g,mask)
+                    
                 frame[:,:,0]=g
                 frame[:,:,1]=g
                 frame[:,:,2]=g
@@ -618,14 +722,15 @@ class TrackingFilter:
         print "+","p: pause at previous frame;"
         print "+","e: pause at final frame;"
         print "+","a: pause at first frame;"
-        print "+","u: pause at the initial frame ;"
-        print "+","w: store this frame position;"
+        print "+","u: rotate stored position and pause at last position;"
+        print "+","w: store this frame position (and pause);"
         print "+","o: toggle original/modified;"
         print "+","[: previous step"
         print "+","]: next step"
         if not xkeyevent is None:
             print "+","x:", xkeyeventtitle
         print ""
+        self.key_w_ring=[initialpos]
         print "frameposition:", initialpos
         self.update_frame(initialpos)
         while(self.original.isOpened()):
@@ -677,11 +782,14 @@ class TrackingFilter:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 print "frameposition:", pos
             elif keyinput == ord('u'):
-                pos=initialpos
-                self.update_frame(pos)
-                self.direction=0
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                print "frameposition:", pos                
+                if self.key_w_ring != []:
+                    pos=self.key_w_ring.pop()
+                    self.key_w_ring.insert(0,pos)
+                    self.update_frame(pos)
+                    self.direction=0
+                    pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                    print "frameposition:", pos
+                    print "w_ring:",self.key_w_ring
             elif keyinput == ord('f'):
                 self.direction=100
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
@@ -695,8 +803,10 @@ class TrackingFilter:
                 print "originalframe:", self.flag_original
             elif keyinput == ord('w'):
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                self.key_w_ring.append(pos)
+                self.direction=0
                 print "w:", pos
-                self.key_event_result.append(pos)
+                print "w_ring:",self.key_w_ring
             elif keyinput == ord('x'):
                 if not xkeyevent is None:
                     print "x:", xkeyeventtitle
