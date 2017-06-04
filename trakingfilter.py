@@ -519,6 +519,8 @@ class TrackingFilter:
             
     def add_or_remove_from_tracked_point(self, x, y, r):
         pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+        self.tracking_data_current_version=self.tracking_data_current_version+1
+        self.tracking_data_version[pos]=self.tracking_data_current_version
         if pos in self.tracked_point:
             i=0
             for feature in self.tracked_point[pos]:
@@ -616,12 +618,21 @@ class TrackingFilter:
         return r
     
     def update_trackingpoint_if_needed(self,oframe):
-        if self.direction*self.default_direction>0:
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-            if pos-self.default_direction in self.tracked_point:
-                features=self.track_optical_flow_between_frames(self.original_frame,oframe,self.tracked_point[pos-self.default_direction])
-                if not features is None:
-                    self.tracked_point[pos]=features
+        if self.direction*self.default_direction <= 0:
+            return
+        pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+        if not pos-self.default_direction in self.tracking_data_version:
+            return
+        if pos in self.tracking_data_version:
+            if self.tracking_data_version[pos] >= self.tracking_data_version[pos-self.default_direction]:
+                return
+        if not pos-self.default_direction in self.tracked_point:
+            return
+        features=self.track_optical_flow_between_frames(self.original_frame,oframe,self.tracked_point[pos-self.default_direction])
+        if features is None:
+            return
+        self.tracked_point[pos]=features
+        self.tracking_data_version[pos]=self.tracking_data_current_version
 
     def update_frame(self,pos=None,verbose=True):
         if not pos is None:
@@ -654,9 +665,17 @@ class TrackingFilter:
             if self.flag_trackedpoint:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 if pos in self.tracked_point:
-                    for feature in self.tracked_point[pos]:
+                    for (i,feature) in enumerate(self.tracked_point[pos]):
                         cv2.circle(frame, (feature[0][0], feature[0][1]), 1, (15, 100, 255), -1, 8, 10)
                         cv2.circle(frame, (feature[0][0], feature[0][1]), 10, (15, 100, 255), 1)
+                        for feature2 in self.tracked_point[pos][:i]:
+                            dsq=(feature[0][0]-feature2[0][0])**2+(feature[0][1]-feature2[0][1])**2
+                            if dsq < 4*100:
+                                cv2.circle(frame, (feature[0][0], feature[0][1]), 10, (15, 250, 100), 1)
+                                cv2.circle(frame, (feature2[0][0], feature2[0][1]), 10, (15, 250, 100), 1)
+                            if dsq < 100:
+                                cv2.circle(frame, (feature[0][0], feature[0][1]), 10, (100, 250, 15), 1)
+                                cv2.circle(frame, (feature2[0][0], feature2[0][1]), 10, (100, 250, 15), 1)
             if self.flag_filter:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 if pos in self.tracked_point:
@@ -677,8 +696,10 @@ class TrackingFilter:
         print "+","b: reverse;"
         print "+","n: pause at next frame;"
         print "+","p: pause at previous frame;"
-        print "+","e: pause at final frame;"
-        print "+","a: pause at first frame;"
+        print "+","e: 10 n;"
+        print "+","a: 10 p;"
+        print "+",">: pause at final frame;"
+        print "+","<: pause at first frame;"
         print "+","u: rotate stored position and pause at last position;"
         print "+","w: store this frame position (and pause);"
         print "+","o: toggle original/modified;"
@@ -689,11 +710,14 @@ class TrackingFilter:
         print ""
         self.key_w_ring=[initialpos]
         print "frameposition:", initialpos
+        self.tracking_data_current_version=0
+        self.tracking_data_version={}
+        self.tracking_data_version[initialpos]=self.tracking_data_current_version
         self.update_frame(initialpos)
         while(self.original.isOpened()):
             if self.direction>0:
                 self.update_frame()
-                if self.direction<10:
+                if self.direction<50:
                     self.direction=self.direction-1
                     pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                     print "frameposition:", pos
@@ -701,7 +725,7 @@ class TrackingFilter:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 pos=pos-1
                 self.update_frame(pos)
-                if self.direction>-10:
+                if self.direction>-50:
                     self.direction=self.direction+1
                     pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                     print "frameposition:", pos
@@ -726,13 +750,17 @@ class TrackingFilter:
                 self.direction=-1
             elif keyinput == ord('n'):
                 self.direction=1
+            elif keyinput == ord('a'):
+                self.direction=-10
             elif keyinput == ord('e'):
+                self.direction=10
+            elif keyinput == ord('>'):
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)-1
                 self.update_frame(pos)
                 self.direction=0
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 print "frameposition:", pos
-            elif keyinput == ord('a'):
+            elif keyinput == ord('<'):
                 pos=0
                 self.update_frame(pos)
                 self.direction=0
