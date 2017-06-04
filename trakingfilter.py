@@ -43,17 +43,12 @@ class TrackingFilter:
             return hsv[:,:,2]
     
     def get_gray_image_for_optical_flow(self,frame):
-        gray=self.get_gray_image_for_template_match(frame)
-        return gray
-        mask=self.get_mask(frame)
-        mframe=self.apply_mask(frame,mask)
-        mframe=self.apply_template_match(mframe)
-        mframe=self.apply_mask(mframe,mask)
-#        gray=cv2.cvtColor(mframe, cv2.COLOR_BGR2GRAY)
-        return gray
+        g=self.get_gray_image_for_template_match(frame)
+        mask=self.get_mask_for_opticalflow(frame)
+        g=self.apply_template_match(g)
+        g=self.apply_mask(g,mask)
+        return g
         
-
-
     def select_background(self):
         print "Choose backgroud frames."
         print "The last frame of w_ring is used as background."
@@ -366,6 +361,8 @@ class TrackingFilter:
             print "Track points from the frame",initpos ,"to the final frame."
             print "If [f] or [n] is used, then optical flow will be computed."
             print ""
+            print "+","mouse click: remove it if there is a particle near; otherwise append new one;"
+
             self.default_direction=1
             self.tracked_point[initpos]=self.original_features[initpos]
             
@@ -379,6 +376,7 @@ class TrackingFilter:
             print "Track points from the frame",initpos ,"to the first frame."
             print "If [b] or [p] is used, then optical flow will be computed."
             print ""
+            print "+","mouse click: remove it if there is a particle near; otherwise append new one;"
             self.default_direction=-1
             cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
             cv2.setMouseCallback("frame", self.edit_tracked_points_by_mouse)
@@ -392,7 +390,6 @@ class TrackingFilter:
         print "```"
         print ""
         return flag
-    
     
     def track_optical_flow_between_frames(self,frame_p,frame,features_p):
         gray = self.get_gray_image_for_optical_flow(frame)
@@ -419,50 +416,7 @@ class TrackingFilter:
                     i -= 1
                 i += 1
         return features
-    def track_optical_flow(self,pos,features,direction,show):
-        n_frame=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
-        gray_p=None
-        while 0< pos and pos <n_frame:
-            self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
-            (ret, frame) = self.original.read()
-            if not ret:
-                break
-            mask=self.get_mask(frame)
-            mframe=self.apply_mask(frame,mask)
-            mframe=self.apply_template_match(mframe)
-            mframe=self.apply_mask(mframe,mask)
-            gray=cv2.cvtColor(mframe, cv2.COLOR_BGR2GRAY)
-            if not gray_p is None:
-                (features,status,err)=cv2.calcOpticalFlowPyrLK(
-                    gray_p,
-                    gray,
-                    features_p,
-                    None,
-                    #winSize = (10, 10),
-                    winSize = (20, 20),
-                    maxLevel = 3,
-                    criteria = self.CRITERIA,
-                    flags = 0)
-                i = 0
-                if features is None:
-                    break
-                while i < len(features):
-                    if status[i] == 0:
-                        features = numpy.delete(features, i, 0)
-                        status = numpy.delete(status, i, 0)
-                        i -= 1
-                    i += 1
-                if show:
-                    for feature in features:
-                        cv2.circle(frame, (feature[0][0], feature[0][1]), 2, (15, 100, 255), -1, 8, 10)
-                    cv2.imshow('frame',frame)
-                    keyinput=cv2.waitKey(1) & 0xFF
 
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-            self.tracked_point[pos]=numpy.copy(features)
-            gray_p=gray
-            features_p=features
-            pos=pos+direction
     def check_filter(self):
         self.filter=numpy.array([[0.6*min(100,max(0,10*(100-((i-10)*(i-10)+(j-10)*(j-10))))) for j in range(20)] for i in range(20)],numpy.float32)
         self.flag_mask=False
@@ -482,6 +436,7 @@ class TrackingFilter:
         print "```"
         print ""
         return flag
+    
     def apply_filter(self,frame,y,x):
         frame=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         if frame[x-10:x+10,y-10:y+10,0].shape == self.filter.shape:
@@ -567,7 +522,6 @@ class TrackingFilter:
         if pos in self.tracked_point:
             i=0
             for feature in self.tracked_point[pos]:
-                print feature,x,y
                 if (x-feature[0][0])*(x-feature[0][0])+(y-feature[0][1])*(y-feature[0][1])<r*r:
                     print "remove", i, feature
                     self.tracked_point[pos] = numpy.delete(self.tracked_point[pos], i, 0)
@@ -607,10 +561,11 @@ class TrackingFilter:
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
             self.inputted_data.append((pos,x,y))
 
-    def get_mask_for_template_match(self,gray):
+    def get_mask_for_opticalflow(self,frame):
         if self.bg==[]:
             return None
         operator = numpy.ones((3, 3), numpy.uint8)
+        gray = self.get_gray_image_for_template_match(frame)
         bg = self.get_gray_image_for_template_match(self.bg[-1])
         temp =cv2.absdiff(gray,bg)
         temp = cv2.threshold(temp, 15, 255, cv2.THRESH_BINARY)[1]
@@ -684,11 +639,10 @@ class TrackingFilter:
             frame=oframe
             if self.flag_gray:
                 g=self.get_gray_image_for_template_match(frame)
-                if self.flag_mask:
-                    mask=self.get_mask_for_template_match(g)
                 if self.flag_templatematch:
                     g=self.apply_template_match(g)
                 if self.flag_mask:
+                    mask=self.get_mask_for_opticalflow(frame)
                     g=self.apply_mask(g,mask)
                     
                 frame[:,:,0]=g
