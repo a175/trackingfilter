@@ -418,7 +418,7 @@ class TrackingFilter:
         return features
 
     def check_filter(self):
-        self.filter=numpy.array([[0.6*min(100,max(0,10*(100-((i-10)*(i-10)+(j-10)*(j-10))))) for j in range(20)] for i in range(20)],numpy.float32)
+        self.filter=numpy.array([[-0.6*min(100,max(0,2*(100-((i-10)*(i-10)+(j-10)*(j-10))))) for j in range(20)] for i in range(20)],numpy.float32)
         self.flag_mask=False
         self.flag_templatematch=False
         self.flag_gray=False
@@ -614,6 +614,14 @@ class TrackingFilter:
                 d1=(ss[1]-s[1])//2
                 r[d0:s[0]+d0,d1:s[1]+d1]=r[d0:s[0]+d0,d1:s[1]+d1]+255*res/n
         return r
+    
+    def update_trackingpoint_if_needed(self,oframe):
+        if self.direction*self.default_direction>0:
+            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            if pos-self.default_direction in self.tracked_point:
+                features=self.track_optical_flow_between_frames(self.original_frame,oframe,self.tracked_point[pos-self.default_direction])
+                if not features is None:
+                    self.tracked_point[pos]=features
 
     def update_frame(self,pos=None,verbose=True):
         if not pos is None:
@@ -629,12 +637,7 @@ class TrackingFilter:
         (ret, oframe) = self.original.read()
         if ret:
             if self.flag_tracking:
-                if self.direction*self.default_direction>0:
-                    pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                    if pos-self.default_direction in self.tracked_point:
-                        features=self.track_optical_flow_between_frames(self.original_frame,oframe,self.tracked_point[pos-self.default_direction])
-                        if not features is None:
-                            self.tracked_point[pos]=features
+                self.update_trackingpoint_if_needed(oframe)
             self.original_frame=numpy.copy(oframe)
             frame=oframe
             if self.flag_gray:
