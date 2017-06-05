@@ -319,6 +319,43 @@ class TrackingFilter:
         gray = self.get_gray_image_for_template_match(frame)
         self.template.append(gray[yp:y,xp:x])
 
+    def select_filter_radius(self):
+        print "Choose radius of filter."
+        print ""
+        print "+","mouse drag: append the circle;"
+        self.event_x=None
+        self.inputted_data=[]
+        self.flag_mask=False
+        self.flag_templatematch=False
+        self.flag_gray=False
+        self.flag_trackedpoint=False
+        self.flag_original=False
+        self.flag_filter=False
+        self.flag_tracking=False
+        self.default_direction=0
+
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
+        cv2.setMouseCallback("frame", self.select_circle_by_mouse)
+        flag=self.showvideo(0)
+        cv2.destroyWindow("frame")
+        if flag <= 0:
+            return flag
+        if self.inputted_data == []:
+            radius=10
+        else:
+            (pos,xp,x,yp,y)=self.inputted_data[-1]
+            radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
+        self.set_radius_of_filter(radius)
+        print ""
+        print "``` python"
+        print "tf.set_radius_of_filter(",radius,")"
+        print "```"
+        print ""
+        return flag
+    
+    def set_radius_of_filter(self,radius):
+        self.radius_of_filter=int(radius)
+        
     def select_feature(self):
         print "Choose target unit."
         print ""
@@ -375,7 +412,7 @@ class TrackingFilter:
     def track_optical_flow_all_and_check(self):
         print "Track points."
         print ""
-        
+        flag=-1
         self.flag_mask=False
         self.flag_templatematch=False
         self.flag_gray=False
@@ -466,9 +503,15 @@ class TrackingFilter:
                     i -= 1
                 i += 1
         return features
-
+    
+    def filter_weight(self,x,y):
+        r=self.radius_of_filter
+        d=numpy.sqrt(x**2+y**2)
+        w=min(1,4*max(0,1-(d/r)**2))
+        return w
     def check_filter(self):
-        self.filter=numpy.array([[-0.3*min(100,max(0,2*(100-((i-10)*(i-10)+(j-10)*(j-10))))) for j in range(20)] for i in range(20)],numpy.float32)
+        r=self.radius_of_filter
+        self.filter=numpy.array([[ 60*self.filter_weight(i-r,j-r)  for j in range(2*r)] for i in range(2*r)],numpy.float32)
         self.flag_mask=False
         self.flag_templatematch=False
         self.flag_gray=False
@@ -523,8 +566,9 @@ class TrackingFilter:
     
     def apply_filter(self,frame,y,x):
         frame=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        if frame[x-10:x+10,y-10:y+10,0].shape == self.filter.shape:
-            frame[x-10:x+10,y-10:y+10,0]=(frame[x-10:x+10,y-10:y+10,0]+self.filter)%180
+        r=self.radius_of_filter
+        if frame[x-r:x+r,y-r:y+r,0].shape == self.filter.shape:
+            frame[x-r:x+r,y-r:y+r,0]=(frame[x-r:x+r,y-r:y+r,0]+self.filter)%180
         frame=cv2.cvtColor(frame, cv2.COLOR_HSV2BGR)
         return frame
     def run(self,initstep=0):
@@ -535,6 +579,7 @@ class TrackingFilter:
             self.select_masktype,
             self.select_template,
             self.select_templatematchingtype,
+            self.select_filter_radius,
             self.select_feature,
             self.track_optical_flow_all_and_check,
             self.check_filter
@@ -561,7 +606,32 @@ class TrackingFilter:
             print "\n***\n"
 
         print "end."
-                                                                        
+
+    def select_circle_by_mouse(self,event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONUP:
+            (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
+            self.direction=self.mouse_event_note["direction"]
+            self.frame=numpy.copy(self.mouse_event_note["frame"])
+            self.mouse_event_note={}
+            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            self.inputted_data.append((pos,xp,x,yp,y))
+            radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
+            cv2.circle(self.frame, (xp, yp), 1, (0, 255, 255), -1, 8, 10)
+            cv2.circle(self.frame, (xp,yp), int(radius), (0, 255, 255), 1)
+            print "circle: ", ((xp, yp), (x,y))
+        elif event == cv2.EVENT_LBUTTONDOWN:
+            self.mouse_event_note["LBUTTONDOWN"]=(x,y)
+            self.mouse_event_note["direction"]=self.direction
+            self.mouse_event_note["frame"]=self.frame
+            self.direction=0
+        elif  event == cv2.EVENT_MOUSEMOVE:
+            if "LBUTTONDOWN" in self.mouse_event_note:
+                (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
+                self.frame=numpy.copy(self.mouse_event_note["frame"])
+                radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
+                cv2.circle(self.frame, (xp, yp), 1, (0, 0, 255), -1, 8, 10)
+                cv2.circle(self.frame, (xp,yp), int(radius), (0, 0, 255), 1)
+
     def select_rectangle_by_mouse(self,event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONUP:
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
@@ -630,13 +700,13 @@ class TrackingFilter:
             self.frame=numpy.copy(self.mouse_event_note["frame"])
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
             self.mouse_event_note={}
-            (pt,f)=self.add_or_remove_from_tracked_point(xp,yp,10)
+            (pt,f)=self.add_or_remove_from_tracked_point(xp,yp,4)
             if f>0:
                 cv2.circle(self.frame, pt, 1, (15, 100, 255), -1, 8, 10)
-                cv2.circle(self.frame, pt, 10, (15, 100, 255), 1)
+                cv2.circle(self.frame, pt, self.radius_of_filter, (15, 100, 255), 1)
             else:
                 cv2.circle(self.frame, pt, 1, (200, 100, 0), -1, 8, 10)
-                cv2.circle(self.frame, pt, 10, (200, 100, 0), 1)
+                cv2.circle(self.frame, pt,  self.radius_of_filter, (200, 100, 0), 1)
             
         elif event == cv2.EVENT_LBUTTONDOWN:
             self.mouse_event_note["LBUTTONDOWN"]=(x,y)
@@ -752,13 +822,13 @@ class TrackingFilter:
                 if pos in self.tracked_point:
                     for (i,feature) in enumerate(self.tracked_point[pos]):
                         cv2.circle(frame, (feature[0][0], feature[0][1]), 1, (15, 100, 255), -1, 8, 10)
-                        cv2.circle(frame, (feature[0][0], feature[0][1]), 10, (15, 100, 255), 1)
+                        cv2.circle(frame, (feature[0][0], feature[0][1]),  self.radius_of_filter, (15, 100, 255), 1)
                         for feature2 in self.tracked_point[pos][:i]:
-                            dsq=(feature[0][0]-feature2[0][0])**2+(feature[0][1]-feature2[0][1])**2
-                            if dsq < 4*100:
-                                cv2.circle(frame, (feature[0][0], feature[0][1]), 10, (15, 250, 100), 1)
-                                cv2.circle(frame, (feature2[0][0], feature2[0][1]), 10, (15, 250, 100), 1)
-                            if dsq < 100:
+                            d=numpy.sqrt((feature[0][0]-feature2[0][0])**2+(feature[0][1]-feature2[0][1])**2)
+                            if d < 2*self.radius_of_filter:
+                                cv2.circle(frame, (feature[0][0], feature[0][1]),  self.radius_of_filter, (15, 250, 100), 1)
+                                cv2.circle(frame, (feature2[0][0], feature2[0][1]),  self.radius_of_filter, (15, 250, 100), 1)
+                            if d < 10:
                                 cv2.circle(frame, (feature[0][0], feature[0][1]), 1, (100, 250, 15), 2)
                                 cv2.circle(frame, (feature2[0][0], feature2[0][1]), 1, (100, 250, 15), 2)
             if self.flag_filter:
