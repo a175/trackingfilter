@@ -2,12 +2,10 @@ import numpy
 import cv2
 
 class TrackingFilter:
-    def __init__(self,original):
-        self.original = original
+    def __init__(self):
         self.mouse_event_note={}
         self.mouse_event_result=[]
         self.direction=0
-        (ret, self.frame) = self.original.read()
         self.bg=[]
         self.template=[]
         self.set_masktype("1")
@@ -48,6 +46,35 @@ class TrackingFilter:
         g=self.apply_template_match(g)
         g=self.apply_mask(g,mask)
         return g
+
+    def input_filename(self):
+        print "Input filenames to use."
+        print ""
+        print "Filename of original video:"
+        video=raw_input()
+        print "Filename to save the modified video:"
+        outfile=raw_input()
+        original=cv2.VideoCapture(video)
+        self.set_original(original)
+        self.set_outfile(outfile)
+        print ""
+        print "``` python"
+        print "import numpy"
+        print "import cv2"
+        print ""
+        print "tf=TrackingFilter()"
+        print "original=cv2.VideoCapture(\"%s\")" % video
+        print "tf.set_original(original)"
+        print "tf.set_outfile(\"%s\")" % outfile
+        print "```"
+        print ""
+        return 1
+    
+    def set_original(self,video):
+        self.original=video
+        
+    def set_outfile(self,outfilename):
+        self.outfile = outfilename
         
     def select_background(self):
         print "Choose backgroud frames."
@@ -357,6 +384,7 @@ class TrackingFilter:
         self.flag_filter=False
         self.flag_tracking=True
         self.tracked_point={}
+        trackedpoints={}
         for initpos in self.original_features:
             print "Track points from the frame",initpos ,"to the final frame."
             print "If [f] or [n] is used, then optical flow will be computed."
@@ -364,8 +392,8 @@ class TrackingFilter:
             print "+","mouse click: remove it if there is a particle near; otherwise append new one;"
 
             self.default_direction=1
+            self.tracked_point={}
             self.tracked_point[initpos]=self.original_features[initpos]
-            
             cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
             cv2.setMouseCallback("frame", self.edit_tracked_points_by_mouse)
             flag=self.showvideo(initpos)
@@ -384,12 +412,34 @@ class TrackingFilter:
             cv2.destroyWindow("frame")
             if flag <= 0:
                 return flag
+            trackedpoints[initpos]=self.tracked_point
 
+        self.reset_filter_position()
         print ""
         print "``` python"
+        print "tf.reset_filter_position()"
+        for initpos in trackedpoints:
+            for pos in trackedpoints[initpos]:
+                ff=[]
+                for feature in trackedpoints[initpos][pos]:
+                    ff.append((feature[0][0],feature[0][1]))
+                for (x,y) in ff:
+                    self.append_filter_position(pos,x,y)
+                print "ff=",ff
+                print "for (x,y) in ff:"
+                print "    tf.append_filter_position(",pos,",x,y)"
+                print ""
         print "```"
         print ""
         return flag
+    
+    def reset_filter_position(self):
+        self.filter_position={}
+        
+    def append_filter_position(self,pos,x,y):
+        if not pos in self.filter_position:
+            self.filter_position[pos]=[]
+        self.filter_position[pos].append((x,y))
     
     def track_optical_flow_between_frames(self,frame_p,frame,features_p):
         gray = self.get_gray_image_for_optical_flow(frame)
@@ -418,7 +468,7 @@ class TrackingFilter:
         return features
 
     def check_filter(self):
-        self.filter=numpy.array([[-0.6*min(100,max(0,2*(100-((i-10)*(i-10)+(j-10)*(j-10))))) for j in range(20)] for i in range(20)],numpy.float32)
+        self.filter=numpy.array([[-0.3*min(100,max(0,2*(100-((i-10)*(i-10)+(j-10)*(j-10))))) for j in range(20)] for i in range(20)],numpy.float32)
         self.flag_mask=False
         self.flag_templatematch=False
         self.flag_gray=False
@@ -430,13 +480,13 @@ class TrackingFilter:
         cv2.destroyWindow("frame")
         if flag <= 0:
             return flag
-        
+        print ""
         print ""
         print "``` python"
         print "```"
         print ""
         return flag
-    
+        
     def apply_filter(self,frame,y,x):
         frame=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         if frame[x-10:x+10,y-10:y+10,0].shape == self.filter.shape:
@@ -445,6 +495,7 @@ class TrackingFilter:
         return frame
     def run(self,initstep=0):
         runlevel=[
+            self.input_filename,
             self.select_grayimage,
             self.select_background,
             self.select_masktype,
@@ -456,7 +507,7 @@ class TrackingFilter:
         ]
         currentstep=initstep
         while 0 <= currentstep and currentstep < len(runlevel):
-            print "Step", currentstep
+            print "Section", currentstep
             print "==========="
             flag=runlevel[currentstep]()
             if flag>0:
@@ -674,13 +725,13 @@ class TrackingFilter:
                                 cv2.circle(frame, (feature[0][0], feature[0][1]), 10, (15, 250, 100), 1)
                                 cv2.circle(frame, (feature2[0][0], feature2[0][1]), 10, (15, 250, 100), 1)
                             if dsq < 100:
-                                cv2.circle(frame, (feature[0][0], feature[0][1]), 10, (100, 250, 15), 1)
-                                cv2.circle(frame, (feature2[0][0], feature2[0][1]), 10, (100, 250, 15), 1)
+                                cv2.circle(frame, (feature[0][0], feature[0][1]), 1, (100, 250, 15), 2)
+                                cv2.circle(frame, (feature2[0][0], feature2[0][1]), 1, (100, 250, 15), 2)
             if self.flag_filter:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                if pos in self.tracked_point:
-                    for feature in self.tracked_point[pos]:
-                        frame=self.apply_filter(frame,feature[0][0], feature[0][1])
+                if pos in self.filter_position:
+                    for (x,y) in self.filter_position[pos]:
+                        frame=self.apply_filter(frame,x,y)
 
             self.frame = frame
         else:
@@ -800,8 +851,9 @@ class TrackingFilter:
                     print "leave x:", xkeyeventtitle
 
 if __name__=="__main__":
-    original=cv2.VideoCapture('a.avi')
-    tf=TrackingFilter(original)
+    import sys, os
+    sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
+    tf=TrackingFilter()
     tf.run()
     original.release()
     cv2.destroyAllWindows()
