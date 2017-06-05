@@ -355,7 +355,9 @@ class TrackingFilter:
     
     def set_radius_of_filter(self,radius):
         self.radius_of_filter=int(radius)
-        
+        r=self.radius_of_filter
+        self.filter=numpy.array([[ 60*self.filter_weight(i-r,j-r)  for j in range(2*r)] for i in range(2*r)],numpy.float32)
+
     def select_feature(self):
         print "Choose target unit."
         print ""
@@ -398,6 +400,7 @@ class TrackingFilter:
             self.original_features[pos] = numpy.append(self.original_features[pos], [[[x, y]]], axis = 0).astype(numpy.float32)
         else:
             self.original_features[pos] = numpy.array([[[x, y]]], numpy.float32)
+
     def adjust_original_features(self):
         for pos in self.original_features:
             self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
@@ -510,8 +513,6 @@ class TrackingFilter:
         w=min(1,4*max(0,1-(d/r)**2))
         return w
     def check_filter(self):
-        r=self.radius_of_filter
-        self.filter=numpy.array([[ 60*self.filter_weight(i-r,j-r)  for j in range(2*r)] for i in range(2*r)],numpy.float32)
         self.flag_mask=False
         self.flag_templatematch=False
         self.flag_gray=False
@@ -565,12 +566,15 @@ class TrackingFilter:
         self.original.release()
     
     def apply_filter(self,frame,y,x):
+        r=self.radius_of_filter
+        filter=self.filter
         frame=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         r=self.radius_of_filter
-        if frame[x-r:x+r,y-r:y+r,0].shape == self.filter.shape:
-            frame[x-r:x+r,y-r:y+r,0]=(frame[x-r:x+r,y-r:y+r,0]+self.filter)%180
+        if frame[x-r:x+r,y-r:y+r,0].shape == filter.shape:
+            frame[x-r:x+r,y-r:y+r,0]=(frame[x-r:x+r,y-r:y+r,0]+filter)%180
         frame=cv2.cvtColor(frame, cv2.COLOR_HSV2BGR)
         return frame
+
     def run(self,initstep=0):
         runlevel=[
             self.input_filename,
