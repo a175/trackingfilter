@@ -480,13 +480,47 @@ class TrackingFilter:
         cv2.destroyWindow("frame")
         if flag <= 0:
             return flag
+        self.save_modified_video(10)
         print ""
         print ""
         print "``` python"
+        print "save_modified_video()"
         print "```"
         print ""
         return flag
+
+    def save_modified_video(self,verbose=-1):
+        fps=self.original.get(cv2.cv.CV_CAP_PROP_FPS)
+        n_frames=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
+        if verbose>0:
+            step=n_frames/verbose
+        else:
+            step=0
+        flag=step
+        w=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)
+        h=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
+        fourcc = cv2.cv.CV_FOURCC(*'XVID')
+        out = cv2.VideoWriter('output.avi',fourcc,fps, (int(w),int(h)))
         
+        self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES,0)
+        pos=0
+        while(self.original.isOpened()):
+            (ret, frame) = self.original.read()
+            if ret:
+                if pos in self.filter_position:
+                    for (x,y) in self.filter_position[pos]:
+                        frame=self.apply_filter(frame,x,y)
+                out.write(frame)
+            else:
+                break
+            pos=pos+1
+            if verbose:
+                if pos > flag:
+                    flag=flag+step
+                    print "+ Done ", pos,"/",n_frames
+        out.release()
+        self.original.release()
+    
     def apply_filter(self,frame,y,x):
         frame=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         if frame[x-10:x+10,y-10:y+10,0].shape == self.filter.shape:
@@ -855,5 +889,4 @@ if __name__=="__main__":
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
     tf=TrackingFilter()
     tf.run()
-    original.release()
     cv2.destroyAllWindows()
