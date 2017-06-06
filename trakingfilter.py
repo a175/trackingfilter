@@ -8,6 +8,7 @@ class TrackingFilter:
         self.direction=0
         self.bg=[]
         self.template=[]
+        self.filter_list={}
         self.set_masktype("1")
         self.set_templatematchingtype("apply")
         self.features=None
@@ -341,14 +342,14 @@ class TrackingFilter:
         if flag <= 0:
             return flag
         if self.inputted_data == []:
-            radius=10
+            rr=[10]
         else:
-            (pos,xp,x,yp,y)=self.inputted_data[-1]
-            radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
-        self.set_radius_of_filter(radius)
+            rr=[numpy.sqrt((xp-x)**2 + (yp-y)**2) for (pos,xp,x,yp,y) in self.inputted_data]
         print ""
         print "``` python"
-        print "tf.set_radius_of_filter(",radius,")"
+        for radius in rr:
+            self.set_radius_of_filter(radius)
+            print "tf.set_radius_of_filter(",radius,")"
         print "```"
         print ""
         return flag
@@ -356,7 +357,9 @@ class TrackingFilter:
     def set_radius_of_filter(self,radius):
         self.radius_of_filter=int(radius)
         r=self.radius_of_filter
-        self.filter=numpy.array([[ 60*self.filter_weight(i-r,j-r)  for j in range(2*r)] for i in range(2*r)],numpy.float32)
+        f=numpy.array([[ 60*self.filter_weight(i-r,j-r)  for j in range(2*r)] for i in range(2*r)],numpy.float32)
+        (ret,m)=cv2.threshold(f,1,255,cv2.THRESH_TRUNC)
+        self.filter_list[r]=(f,m,-r,-r,r,r)
 
     def select_feature(self):
         print "Choose target unit."
@@ -464,10 +467,10 @@ class TrackingFilter:
                 for feature in trackedpoints[initpos][pos]:
                     ff.append((feature[0][0],feature[0][1]))
                 for (x,y) in ff:
-                    self.append_filter_position(pos,x,y)
+                    self.append_filter_position(pos,x,y,self.radius_of_filter)
                 print "ff=",ff
                 print "for (x,y) in ff:"
-                print "    tf.append_filter_position(",pos,",x,y)"
+                print "    tf.append_filter_position(",pos,",x,y,",self.radius_of_filter,")"
                 print ""
         print "```"
         print ""
@@ -476,10 +479,10 @@ class TrackingFilter:
     def reset_filter_position(self):
         self.filter_position={}
         
-    def append_filter_position(self,pos,x,y):
+    def append_filter_position(self,pos,x,y,r):
         if not pos in self.filter_position:
             self.filter_position[pos]=[]
-        self.filter_position[pos].append((x,y))
+        self.filter_position[pos].append((x,y,r))
     
     def track_optical_flow_between_frames(self,frame_p,frame,features_p):
         gray = self.get_gray_image_for_optical_flow(frame)
@@ -552,28 +555,35 @@ class TrackingFilter:
             (ret, frame) = self.original.read()
             if ret:
                 if pos in self.filter_position:
-                    for (x,y) in self.filter_position[pos]:
-                        frame=self.apply_filter(frame,x,y)
+                    frame=self.apply_filters(frame,self.filter_position[pos])
                 out.write(frame)
             else:
                 break
             pos=pos+1
-            if verbose:
+            if verbose>=0:
                 if pos > flag:
                     flag=flag+step
                     print "+ Done ", pos,"/",n_frames
+        if verbose>=0:
+            print "+ Done."
         out.release()
         self.original.release()
-    
-    def apply_filter(self,frame,y,x):
-        r=self.radius_of_filter
-        filter=self.filter
+        
+    def apply_filters(self,frame,filters):
         frame=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        r=self.radius_of_filter
-        if frame[x-r:x+r,y-r:y+r,0].shape == filter.shape:
-            frame[x-r:x+r,y-r:y+r,0]=(frame[x-r:x+r,y-r:y+r,0]+filter)%180
+        fl=numpy.zeros(frame[:,:,0].shape)
+        ma=numpy.zeros(frame[:,:,0].shape)
+        for (y,x,r) in filters:
+            (f,m,x0,y0,x1,y1)=self.filter_list[r]
+            if fl[x+x0:x+x1,y+y0:y+y1].shape == f.shape:
+                fl[x+x0:x+x1,y+y0:y+y1]=(fl[x+x0:x+x1,y+y0:y+y1]+f)
+                ma[x+x0:x+x1,y+y0:y+y1]=(ma[x+x0:x+x1,y+y0:y+y1]+m)
+        ma=numpy.abs(ma-0.5)+0.5
+        fl=fl/ma
+        frame[:,:,0]=(frame[:,:,0]+fl[:,:])%180
         frame=cv2.cvtColor(frame, cv2.COLOR_HSV2BGR)
         return frame
+    
 
     def run(self,initstep=0):
         runlevel=[
@@ -633,7 +643,7 @@ class TrackingFilter:
                 (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
                 self.frame=numpy.copy(self.mouse_event_note["frame"])
                 radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
-                cv2.circle(self.frame, (xp, yp), 1, (0, 0, 255), -1, 8, 10)
+                cv2.circle(self.frame, (xp,yp), 1, (0, 0, 255), -1, 8, 10)
                 cv2.circle(self.frame, (xp,yp), int(radius), (0, 0, 255), 1)
 
     def select_rectangle_by_mouse(self,event, x, y, flags, param):
@@ -838,8 +848,7 @@ class TrackingFilter:
             if self.flag_filter:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 if pos in self.filter_position:
-                    for (x,y) in self.filter_position[pos]:
-                        frame=self.apply_filter(frame,x,y)
+                    frame=self.apply_filters(frame,self.filter_position[pos])
 
             self.frame = frame
         else:
@@ -957,6 +966,7 @@ class TrackingFilter:
                     print "+ x"
                     xkeyevent()
                     print "leave x:", xkeyeventtitle
+
 
 if __name__=="__main__":
     import sys, os
