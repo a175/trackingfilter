@@ -549,6 +549,7 @@ class TrackingFilter:
             maxLevel = 5,
             criteria = self.CRITERIA,
             flags = 0)
+        print err
         i = 0
         if not features is None:
             while i < len(features):
