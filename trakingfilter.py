@@ -578,7 +578,7 @@ class TrackingFilter:
         if flag <= 0:
             return flag
         print "save as", self.outfile
-        self.save_modified_video(10)
+        self.save_modified_video(self.outfile,10)
         print ""
         print ""
         print "``` python"
@@ -587,9 +587,9 @@ class TrackingFilter:
         print ""
         return flag
 
-    def save_modified_video(self,verbose=-1):
+    def save_modified_video(self,outfile,verbose=-1):
         """
-        Save the modified video to self.outfile.
+        Save the modified video as outfile.
         verbose: Comment each 100/verbose %  if verbose>0
                  Comment each frame  if verbose=0
         """
@@ -603,7 +603,7 @@ class TrackingFilter:
         w=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)
         h=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
         fourcc = cv2.cv.CV_FOURCC(*'XVID')
-        out = cv2.VideoWriter(self.outfile,fourcc,fps, (int(w),int(h)))
+        out = cv2.VideoWriter(outfile,fourcc,fps, (int(w),int(h)))
         
         self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES,0)
         pos=0
