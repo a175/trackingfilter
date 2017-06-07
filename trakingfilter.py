@@ -450,9 +450,9 @@ class TrackingFilter:
         x,y: coordinate
         """
         if pos in self.original_features:
-            self.original_features[pos] = numpy.append(self.original_features[pos], [[[x, y]]], axis = 0).astype(numpy.float32)
+            self.original_features[pos] = numpy.append(self.original_features[pos], [[x, y]], axis = 0).astype(numpy.float32)
         else:
-            self.original_features[pos] = numpy.array([[[x, y]]], numpy.float32)
+            self.original_features[pos] = numpy.array([[x, y]], numpy.float32)
 
             
     def track_optical_flow_all_and_check(self):
@@ -505,7 +505,7 @@ class TrackingFilter:
             for pos in trackedpoints[initpos]:
                 ff=[]
                 for feature in trackedpoints[initpos][pos]:
-                    ff.append((feature[0][0],feature[0][1]))
+                    ff.append((feature[0],feature[1]))
                 for (x,y) in ff:
                     self.append_filter_position(pos,x,y,self.radius_of_filter)
                 print "ff=",ff
@@ -783,19 +783,19 @@ class TrackingFilter:
         if pos in self.tracked_point:
             i=0
             for feature in self.tracked_point[pos]:
-                if (x-feature[0][0])*(x-feature[0][0])+(y-feature[0][1])*(y-feature[0][1])<r*r:
+                if (x-feature[0])*(x-feature[0])+(y-feature[1])*(y-feature[1])<r*r:
                     print "remove", i, feature
                     self.tracked_point[pos] = numpy.delete(self.tracked_point[pos], i, 0)
-                    return ((feature[0][0],feature[0][1]),-1)
+                    return ((feature[0],feature[1]),-1)
                 else:
                     i=i+1
             print "add", x,y
-            self.tracked_point[pos] = numpy.append(self.tracked_point[pos], [[[x, y]]], axis = 0).astype(numpy.float32)
+            self.tracked_point[pos] = numpy.append(self.tracked_point[pos], [[x, y]], axis = 0).astype(numpy.float32)
             return ((x,y),1)
 
         else:
             print "add", x,y, "."
-            self.tracked_point[pos]=numpy.array([[[x, y]]], numpy.float32)
+            self.tracked_point[pos]=numpy.array([[x, y]], numpy.float32)
             return ((x,y),1)
         
     def edit_tracked_points_by_mouse(self,event, x, y, flags, param):
@@ -927,16 +927,22 @@ class TrackingFilter:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 if pos in self.tracked_point:
                     for (i,feature) in enumerate(self.tracked_point[pos]):
-                        cv2.circle(frame, (feature[0][0], feature[0][1]), 1, (15, 100, 255), -1, 8, 10)
-                        cv2.circle(frame, (feature[0][0], feature[0][1]),  self.radius_of_filter, (15, 100, 255), 1)
+                        cv2.circle(frame, (feature[0], feature[1]), 1, (15, 100, 255), -1, 8, 10)
+                        cv2.circle(frame, (feature[0], feature[1]),  self.radius_of_filter, (15, 100, 255), 1)
                         for feature2 in self.tracked_point[pos][:i]:
-                            d=numpy.sqrt((feature[0][0]-feature2[0][0])**2+(feature[0][1]-feature2[0][1])**2)
+                            d=numpy.sqrt((feature[0]-feature2[0])**2+(feature[1]-feature2[1])**2)
                             if d < 2*self.radius_of_filter:
-                                cv2.circle(frame, (feature[0][0], feature[0][1]),  self.radius_of_filter, (15, 250, 100), 1)
-                                cv2.circle(frame, (feature2[0][0], feature2[0][1]),  self.radius_of_filter, (15, 250, 100), 1)
+                                cv2.circle(frame, (feature[0], feature[1]),  self.radius_of_filter, (15, 250, 100), 1)
+                                cv2.circle(frame, (feature2[0], feature2[1]),  self.radius_of_filter, (15, 250, 100), 1)
                             if d < 10:
-                                cv2.circle(frame, (feature[0][0], feature[0][1]), 1, (100, 250, 15), 2)
-                                cv2.circle(frame, (feature2[0][0], feature2[0][1]), 1, (100, 250, 15), 2)
+                                cv2.circle(frame, (feature[0], feature[1]), 1, (100, 250, 15), 2)
+                                cv2.circle(frame, (feature2[0], feature2[1]), 1, (100, 250, 15), 2)
+                    if pos-self.default_direction in self.tracked_point:
+                        for (f1,f2) in zip(self.tracked_point[pos],self.tracked_point[pos-self.default_direction]):
+                            cv2.line(frame,(f1[0],f1[1]),(f2[0],f2[1]),(255,255,0),1)
+                        if pos-2*self.default_direction in self.tracked_point:
+                            for (f1,f2) in zip(self.tracked_point[pos-self.default_direction],self.tracked_point[pos-2*self.default_direction]):
+                                cv2.line(frame,(f1[0],f1[1]),(f2[0],f2[1]),(255,255,0),1)
             if self.flag_filter:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 if pos in self.filter_position:
