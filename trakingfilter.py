@@ -536,7 +536,7 @@ class TrackingFilter:
         """
         gray = self.get_gray_image_for_optical_flow(frame)
         gray_p = self.get_gray_image_for_optical_flow(frame_p)
-        #calcOpticalFlowFarneback
+        #flow = cv2.calcOpticalFlowFarneback(gray_p,gray,0.5,3,15, 3, 5, 1.2, 0)
         (features,status,err)=cv2.calcOpticalFlowPyrLK(
             gray_p,
             gray,
@@ -549,7 +549,6 @@ class TrackingFilter:
             maxLevel = 5,
             criteria = self.CRITERIA,
             flags = 0)
-        print err
         i = 0
         if not features is None:
             while i < len(features):
