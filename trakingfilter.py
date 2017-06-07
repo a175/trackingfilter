@@ -394,6 +394,16 @@ class TrackingFilter:
         print ""
         return flag
     
+    def filter_weight(self,x,y):
+        r=self.radius_of_filter
+        d=numpy.sqrt(x**2+y**2)
+        #w=min(1,4*max(0,1-(d/r)**2))
+        if d>r:
+            w=0
+        else:
+            w=1
+        return w
+
     def set_radius_of_filter(self,radius):
         """
         Append a filter of the radius and its infomation.
@@ -559,12 +569,6 @@ class TrackingFilter:
                 i += 1
         return features
     
-    def filter_weight(self,x,y):
-        r=self.radius_of_filter
-        d=numpy.sqrt(x**2+y**2)
-        w=min(1,4*max(0,1-(d/r)**2))
-        return w
-    
     def check_filter(self):
         self.flag_mask=False
         self.flag_templatematch=False
@@ -639,6 +643,7 @@ class TrackingFilter:
                 ma[x+x0:x+x1,y+y0:y+y1]=(ma[x+x0:x+x1,y+y0:y+y1]+m)
         ma=numpy.abs(ma-0.5)+0.5
         fl=fl/ma
+        fl=cv2.GaussianBlur(fl,(5,5),0)
         frame[:,:,0]=(frame[:,:,0]+fl[:,:])%180
         frame=cv2.cvtColor(frame, cv2.COLOR_HSV2BGR)
         return frame
