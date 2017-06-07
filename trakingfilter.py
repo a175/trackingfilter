@@ -406,7 +406,9 @@ class TrackingFilter:
 
     def set_radius_of_filter(self,radius):
         """
-        Append a filter of the radius and its infomation.
+        Create a filter with the radius.
+        Append it and its infomation (mask, margin, size)
+        to the dictionary with key `radius`.
         And set radius of filter to use.
         """
         self.radius_of_filter=int(radius)
@@ -535,6 +537,9 @@ class TrackingFilter:
     def append_filter_position(self,pos,x,y,r):
         """
         Append positions and radius of filter to apply filter.
+        pos: frame number to apply
+        x, y: coordinate (of center of filter).
+        r: key of the dictionary of filters.
         """
         if not pos in self.filter_position:
             self.filter_position[pos]=[]
