@@ -1,14 +1,242 @@
 import numpy
 import cv2
 
-class TrackingFilter:
+class VideoViewer:
     """
-    Change the color of some particles in the video.
+    This impliments some fundumental functions to show video.
     """
     def __init__(self):
         self.mouse_event_note={}
         self.mouse_event_result=[]
         self.direction=0
+        self.flag_original=False
+        
+    def set_original(self,video):
+        """
+        Set the original video capture 
+        video should have been  opened by cv2.VideoCapture(filename).
+        """
+        self.original=video
+
+    def update_frame(self,pos=None,verbose=True):
+        """
+        Update frame.
+        """
+        if not pos is None:
+            if pos>=0:
+                self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
+            else:
+                self.direction=0
+                self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
+                if verbose:
+                    print "frameposition:", pos
+                    print "*This is the first frame.*"
+        (ret, oframe) = self.original.read()
+        if ret:
+            self.frame = oframe
+        else:
+            self.direction=0
+            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
+            if verbose:
+                print "frameposition:", pos
+                print "*This is the final frame.*"
+    
+    def showvideo(self,initialpos,xkeyevent=None, xkeyeventtitle="command mode"):
+        """
+        Open window of video.
+        xkeyevent: function if x is typed.
+        If xkeyevnt is not None and x is typed, 
+        then xkeyevent() is called.
+        """
+        print "+","q|c: quit;"
+        print "+","f: forward;"
+        print "+","b: reverse;"
+        print "+","n: pause at next frame;"
+        print "+","p: pause at previous frame;"
+        print "+","e: 10 n;"
+        print "+","a: 10 p;"
+        print "+",">: pause at final frame;"
+        print "+","<: pause at first frame;"
+        print "+","u: rotate stored position and pause at last position;"
+        print "+","w: store this frame position (and pause);"
+        print "+","o: toggle original/modified;"
+        print "+","[: previous step"
+        print "+","]: next step"
+        if not xkeyevent is None:
+            print "+","x:", xkeyeventtitle
+        print ""
+        self.key_w_ring=[initialpos]
+        print "frameposition:", initialpos
+        self.update_frame(initialpos)
+        while(self.original.isOpened()):
+            if self.direction>0:
+                self.update_frame()
+                if self.direction<50:
+                    self.direction=self.direction-1
+                    pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                    print "frameposition:", pos
+            elif self.direction<0:
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                pos=pos-1
+                self.update_frame(pos)
+                if self.direction>-50:
+                    self.direction=self.direction+1
+                    pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                    print "frameposition:", pos
+            if self.flag_original:
+                cv2.imshow('frame',self.original_frame)
+            else:
+                cv2.imshow('frame',self.frame)
+            keyinput=cv2.waitKey(1) & 0xFF
+            if keyinput == ord('q'):
+                print "Quit"
+                return 0
+            elif keyinput == ord('c'):
+                print "Close"
+                return 0
+            elif keyinput == ord(']'):
+                self.direction=0
+                return 1
+            elif keyinput == ord('['):
+                self.direction=0
+                return -1
+            elif keyinput == ord('p'):
+                self.direction=-1
+            elif keyinput == ord('n'):
+                self.direction=1
+            elif keyinput == ord('a'):
+                self.direction=-10
+            elif keyinput == ord('e'):
+                self.direction=10
+            elif keyinput == ord('>'):
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)-1
+                self.update_frame(pos)
+                self.direction=0
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                print "frameposition:", pos
+            elif keyinput == ord('<'):
+                pos=0
+                self.update_frame(pos)
+                self.direction=0
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                print "frameposition:", pos
+            elif keyinput == ord('u'):
+                if self.key_w_ring != []:
+                    pos=self.key_w_ring.pop()
+                    self.key_w_ring.insert(0,pos)
+                    self.update_frame(pos)
+                    self.direction=0
+                    pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                    print "frameposition:", pos
+                    print "w_ring:",self.key_w_ring
+            elif keyinput == ord('f'):
+                self.direction=100
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                print "frameposition:", pos, "->"
+            elif keyinput == ord('b'):
+                self.direction=-100
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                print "frameposition:", pos, "<-"
+            elif keyinput == ord('o'):
+                self.flag_original=not self.flag_original
+                print "originalframe:", self.flag_original
+            elif keyinput == ord('w'):
+                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                self.key_w_ring.append(pos)
+                self.direction=0
+                print "w:", pos
+                print "w_ring:",self.key_w_ring
+            elif keyinput == ord('x'):
+                if not xkeyevent is None:
+                    print "x:", xkeyeventtitle
+                    print "+ x"
+                    xkeyevent()
+                    print "leave x:", xkeyeventtitle
+
+    def select_circle_by_mouse(self,event, x, y, flags, param):
+        """
+        Select circle and append to self.inputted_data.
+        This is used as mouse event fallback.
+        """
+        if event == cv2.EVENT_LBUTTONUP:
+            (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
+            self.direction=self.mouse_event_note["direction"]
+            self.frame=numpy.copy(self.mouse_event_note["frame"])
+            self.mouse_event_note={}
+            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            self.inputted_data.append((pos,xp,x,yp,y))
+            radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
+            cv2.circle(self.frame, (xp, yp), 1, (0, 255, 255), -1, 8, 10)
+            cv2.circle(self.frame, (xp,yp), int(radius), (0, 255, 255), 1)
+            print "circle: ", ((xp, yp), (x,y))
+        elif event == cv2.EVENT_LBUTTONDOWN:
+            self.mouse_event_note["LBUTTONDOWN"]=(x,y)
+            self.mouse_event_note["direction"]=self.direction
+            self.mouse_event_note["frame"]=self.frame
+            self.direction=0
+        elif  event == cv2.EVENT_MOUSEMOVE:
+            if "LBUTTONDOWN" in self.mouse_event_note:
+                (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
+                self.frame=numpy.copy(self.mouse_event_note["frame"])
+                radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
+                cv2.circle(self.frame, (xp,yp), 1, (0, 0, 255), -1, 8, 10)
+                cv2.circle(self.frame, (xp,yp), int(radius), (0, 0, 255), 1)
+
+    def select_rectangle_by_mouse(self,event, x, y, flags, param):
+        """
+        Select rectangle and append to self.inputted_data.
+        This is used as mouse event fallback.
+        """
+        if event == cv2.EVENT_LBUTTONUP:
+            (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
+            self.direction=self.mouse_event_note["direction"]
+            self.frame=numpy.copy(self.mouse_event_note["frame"])
+            self.mouse_event_note={}
+            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            self.inputted_data.append((pos,xp,x,yp,y))
+            cv2.rectangle(self.frame, (xp, yp), (x,y), (0, 255, 255), 1)
+            print "rectangle: ", ((xp, yp), (x,y))            
+        elif event == cv2.EVENT_LBUTTONDOWN:
+            self.mouse_event_note["LBUTTONDOWN"]=(x,y)
+            self.mouse_event_note["direction"]=self.direction
+            self.mouse_event_note["frame"]=self.frame
+            self.direction=0
+        elif  event == cv2.EVENT_MOUSEMOVE:
+            if "LBUTTONDOWN" in self.mouse_event_note:
+                (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
+                self.frame=numpy.copy(self.mouse_event_note["frame"])
+                cv2.rectangle(self.frame, (xp, yp), (x,y), (0, 0, 255), 1)
+
+    def select_point_by_mouse(self,event, x, y, flags, param):
+        """
+        Select point and append to self.inputted_data.
+        This is used as mouse event fallback.
+        """
+        if event == cv2.EVENT_LBUTTONUP:
+#            self.direction=self.mouse_event_note["direction"]
+            self.frame=numpy.copy(self.mouse_event_note["frame"])
+            (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
+            self.mouse_event_note={}
+            cv2.rectangle(self.frame, (xp-1, yp-1), (xp+1,yp+1),(15, 100, 255), 2)
+            
+        elif event == cv2.EVENT_LBUTTONDOWN:
+            self.mouse_event_note["LBUTTONDOWN"]=(x,y)
+            self.mouse_event_note["direction"]=self.direction
+            self.mouse_event_note["frame"]=numpy.copy(self.frame)
+            self.frame=numpy.copy(self.frame)
+            cv2.rectangle(self.frame, (x-1, y-1), (x+1,y+1), (255,0, 255), 1)
+            self.direction=0
+            print "point: ", (x,y)
+            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            self.inputted_data.append((pos,x,y))
+
+class TrackingFilter(VideoViewer):
+    """
+    Change the color of some particles in the video.
+    """
+    def __init__(self):
+        VideoViewer.__init__(self)
         self.bg=[]
         self.template=[]
         self.filter_list={}
@@ -85,14 +313,7 @@ class TrackingFilter:
         print "```"
         print ""
         return 1
-    
-    def set_original(self,video):
-        """
-        Set the original video capture 
-        video should have been  opened by cv2.VideoCapture(filename).
-        """
-        self.original=video
-        
+            
     def set_outfile(self,outfilename):
         """
         Set the filename to output the modified video.
@@ -486,6 +707,9 @@ class TrackingFilter:
             print ""
             print "+","mouse click: remove it if there is a particle near; otherwise append new one;"
 
+            self.tracking_data_current_version=0
+            self.tracking_data_version={}
+            self.tracking_data_version[initpos]=self.tracking_data_current_version
             self.default_direction=1
             self.tracked_point={}
             self.tracked_point[initpos]=self.original_features[initpos]
@@ -500,6 +724,9 @@ class TrackingFilter:
             print "If [b] or [p] is used, then optical flow will be computed."
             print ""
             print "+","mouse click: remove it if there is a particle near; otherwise append new one;"
+            self.tracking_data_current_version=0
+            self.tracking_data_version={}
+            self.tracking_data_version[initpos]=self.tracking_data_current_version
             self.default_direction=-1
             cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
             cv2.setMouseCallback("frame", self.edit_tracked_points_by_mouse)
@@ -700,83 +927,6 @@ class TrackingFilter:
 
         print "end."
 
-    def select_circle_by_mouse(self,event, x, y, flags, param):
-        """
-        Select circle and append to self.inputted_data.
-        This is used as mouse event fallback.
-        """
-
-        if event == cv2.EVENT_LBUTTONUP:
-            (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
-            self.direction=self.mouse_event_note["direction"]
-            self.frame=numpy.copy(self.mouse_event_note["frame"])
-            self.mouse_event_note={}
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-            self.inputted_data.append((pos,xp,x,yp,y))
-            radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
-            cv2.circle(self.frame, (xp, yp), 1, (0, 255, 255), -1, 8, 10)
-            cv2.circle(self.frame, (xp,yp), int(radius), (0, 255, 255), 1)
-            print "circle: ", ((xp, yp), (x,y))
-        elif event == cv2.EVENT_LBUTTONDOWN:
-            self.mouse_event_note["LBUTTONDOWN"]=(x,y)
-            self.mouse_event_note["direction"]=self.direction
-            self.mouse_event_note["frame"]=self.frame
-            self.direction=0
-        elif  event == cv2.EVENT_MOUSEMOVE:
-            if "LBUTTONDOWN" in self.mouse_event_note:
-                (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
-                self.frame=numpy.copy(self.mouse_event_note["frame"])
-                radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
-                cv2.circle(self.frame, (xp,yp), 1, (0, 0, 255), -1, 8, 10)
-                cv2.circle(self.frame, (xp,yp), int(radius), (0, 0, 255), 1)
-
-    def select_rectangle_by_mouse(self,event, x, y, flags, param):
-        """
-        Select rectangle and append to self.inputted_data.
-        This is used as mouse event fallback.
-        """
-        if event == cv2.EVENT_LBUTTONUP:
-            (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
-            self.direction=self.mouse_event_note["direction"]
-            self.frame=numpy.copy(self.mouse_event_note["frame"])
-            self.mouse_event_note={}
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-            self.inputted_data.append((pos,xp,x,yp,y))
-            cv2.rectangle(self.frame, (xp, yp), (x,y), (0, 255, 255), 1)
-            print "rectangle: ", ((xp, yp), (x,y))            
-        elif event == cv2.EVENT_LBUTTONDOWN:
-            self.mouse_event_note["LBUTTONDOWN"]=(x,y)
-            self.mouse_event_note["direction"]=self.direction
-            self.mouse_event_note["frame"]=self.frame
-            self.direction=0
-        elif  event == cv2.EVENT_MOUSEMOVE:
-            if "LBUTTONDOWN" in self.mouse_event_note:
-                (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
-                self.frame=numpy.copy(self.mouse_event_note["frame"])
-                cv2.rectangle(self.frame, (xp, yp), (x,y), (0, 0, 255), 1)
-
-    def select_point_by_mouse(self,event, x, y, flags, param):
-        """
-        Select point and append to self.inputted_data.
-        This is used as mouse event fallback.
-        """
-        if event == cv2.EVENT_LBUTTONUP:
-#            self.direction=self.mouse_event_note["direction"]
-            self.frame=numpy.copy(self.mouse_event_note["frame"])
-            (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
-            self.mouse_event_note={}
-            cv2.rectangle(self.frame, (xp-1, yp-1), (xp+1,yp+1),(15, 100, 255), 2)
-            
-        elif event == cv2.EVENT_LBUTTONDOWN:
-            self.mouse_event_note["LBUTTONDOWN"]=(x,y)
-            self.mouse_event_note["direction"]=self.direction
-            self.mouse_event_note["frame"]=numpy.copy(self.frame)
-            self.frame=numpy.copy(self.frame)
-            cv2.rectangle(self.frame, (x-1, y-1), (x+1,y+1), (255,0, 255), 1)
-            self.direction=0
-            print "point: ", (x,y)
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-            self.inputted_data.append((pos,x,y))
             
     def add_or_remove_from_tracked_point(self, x, y, r):
         """
@@ -966,120 +1116,6 @@ class TrackingFilter:
                 print "frameposition:", pos
                 print "*This is the final frame.*"
             
-    def showvideo(self,initialpos,xkeyevent=None, xkeyeventtitle="command mode"):
-        """
-        Open window of video.
-        xkeyevent: function if x is typed.
-        If xkeyevnt is not None and x is typed, 
-        then xkeyevent() is called.
-        """
-        print "+","q|c: quit;"
-        print "+","f: forward;"
-        print "+","b: reverse;"
-        print "+","n: pause at next frame;"
-        print "+","p: pause at previous frame;"
-        print "+","e: 10 n;"
-        print "+","a: 10 p;"
-        print "+",">: pause at final frame;"
-        print "+","<: pause at first frame;"
-        print "+","u: rotate stored position and pause at last position;"
-        print "+","w: store this frame position (and pause);"
-        print "+","o: toggle original/modified;"
-        print "+","[: previous step"
-        print "+","]: next step"
-        if not xkeyevent is None:
-            print "+","x:", xkeyeventtitle
-        print ""
-        self.key_w_ring=[initialpos]
-        print "frameposition:", initialpos
-        self.tracking_data_current_version=0
-        self.tracking_data_version={}
-        self.tracking_data_version[initialpos]=self.tracking_data_current_version
-        self.update_frame(initialpos)
-        while(self.original.isOpened()):
-            if self.direction>0:
-                self.update_frame()
-                if self.direction<50:
-                    self.direction=self.direction-1
-                    pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                    print "frameposition:", pos
-            elif self.direction<0:
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                pos=pos-1
-                self.update_frame(pos)
-                if self.direction>-50:
-                    self.direction=self.direction+1
-                    pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                    print "frameposition:", pos
-            if self.flag_original:
-                cv2.imshow('frame',self.original_frame)
-            else:
-                cv2.imshow('frame',self.frame)
-            keyinput=cv2.waitKey(1) & 0xFF
-            if keyinput == ord('q'):
-                print "Quit"
-                return 0
-            elif keyinput == ord('c'):
-                print "Close"
-                return 0
-            elif keyinput == ord(']'):
-                self.direction=0
-                return 1
-            elif keyinput == ord('['):
-                self.direction=0
-                return -1
-            elif keyinput == ord('p'):
-                self.direction=-1
-            elif keyinput == ord('n'):
-                self.direction=1
-            elif keyinput == ord('a'):
-                self.direction=-10
-            elif keyinput == ord('e'):
-                self.direction=10
-            elif keyinput == ord('>'):
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)-1
-                self.update_frame(pos)
-                self.direction=0
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                print "frameposition:", pos
-            elif keyinput == ord('<'):
-                pos=0
-                self.update_frame(pos)
-                self.direction=0
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                print "frameposition:", pos
-            elif keyinput == ord('u'):
-                if self.key_w_ring != []:
-                    pos=self.key_w_ring.pop()
-                    self.key_w_ring.insert(0,pos)
-                    self.update_frame(pos)
-                    self.direction=0
-                    pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                    print "frameposition:", pos
-                    print "w_ring:",self.key_w_ring
-            elif keyinput == ord('f'):
-                self.direction=100
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                print "frameposition:", pos, "->"
-            elif keyinput == ord('b'):
-                self.direction=-100
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                print "frameposition:", pos, "<-"
-            elif keyinput == ord('o'):
-                self.flag_original=not self.flag_original
-                print "originalframe:", self.flag_original
-            elif keyinput == ord('w'):
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                self.key_w_ring.append(pos)
-                self.direction=0
-                print "w:", pos
-                print "w_ring:",self.key_w_ring
-            elif keyinput == ord('x'):
-                if not xkeyevent is None:
-                    print "x:", xkeyeventtitle
-                    print "+ x"
-                    xkeyevent()
-                    print "leave x:", xkeyeventtitle
 
 
 if __name__=="__main__":
