@@ -5,11 +5,12 @@ class VideoViewer:
     """
     This impliments some fundumental functions to show video.
     """
-    def __init__(self):
+    def __init__(self,modify_frame=None):
         self.mouse_event_note={}
         self.mouse_event_result=[]
         self.direction=0
         self.flag_original=False
+        self.modify_frame=modify_frame
         
     def set_original(self,video):
         """
@@ -17,7 +18,28 @@ class VideoViewer:
         video should have been  opened by cv2.VideoCapture(filename).
         """
         self.original=video
+        w=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)
+        h=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
+        self.mouse_event_layer=numpy.zeros((h,w,4))
 
+    def set_modify_frame(self,modify_frame):
+        """
+        Set a function to modify each frame
+        """
+        self.modify_frame=modify_frame
+
+    def overlap_layer(self,base,layer):
+        """
+        Returns overlaped image.
+        4-6th channels of layer is a value between 0 and 1
+        """
+        r=numpy.zeros(base.shape)
+        m=layer[:,:,3]
+        r[:,:,0]=numpy.floor(base[:,:,0]*(-m+1)+layer[:,:,0]*m)
+        r[:,:,1]=numpy.floor(base[:,:,1]*(-m+1)+layer[:,:,1]*m)
+        r[:,:,2]=numpy.floor(base[:,:,2]*(-m+1)+layer[:,:,2]*m)
+        return r.astype(numpy.uint8)
+        
     def update_frame(self,pos=None,verbose=True):
         """
         Update frame.
@@ -34,7 +56,9 @@ class VideoViewer:
                     print "*This is the first frame.*"
         (ret, oframe) = self.original.read()
         if ret:
-            self.frame = oframe
+            if not self.modify_frame is None:
+                oframe = self.modify_frame(oframe)
+                self.frame=oframe
         else:
             self.direction=0
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
@@ -87,7 +111,8 @@ class VideoViewer:
             if self.flag_original:
                 cv2.imshow('frame',self.original_frame)
             else:
-                cv2.imshow('frame',self.frame)
+                frame = self.overlap_layer(self.frame,self.mouse_event_layer)
+                cv2.imshow('frame',frame)
             keyinput=cv2.waitKey(1) & 0xFF
             if keyinput == ord('q'):
                 print "Quit"
@@ -162,26 +187,27 @@ class VideoViewer:
         if event == cv2.EVENT_LBUTTONUP:
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
             self.direction=self.mouse_event_note["direction"]
-            self.frame=numpy.copy(self.mouse_event_note["frame"])
+            self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
             self.mouse_event_note={}
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
             self.inputted_data.append((pos,xp,x,yp,y))
             radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
-            cv2.circle(self.frame, (xp, yp), 1, (0, 255, 255), -1, 8, 10)
-            cv2.circle(self.frame, (xp,yp), int(radius), (0, 255, 255), 1)
+            cv2.circle(self.mouse_event_layer, (xp, yp), 1, (0, 255, 255,1), -1, 8, 10)
+            cv2.circle(self.mouse_event_layer, (xp,yp), int(radius), (0, 255, 255,1), 1)
             print "circle: ", ((xp, yp), (x,y))
         elif event == cv2.EVENT_LBUTTONDOWN:
             self.mouse_event_note["LBUTTONDOWN"]=(x,y)
             self.mouse_event_note["direction"]=self.direction
-            self.mouse_event_note["frame"]=self.frame
+            self.mouse_event_note["frame"]=self.mouse_event_layer
+
             self.direction=0
         elif  event == cv2.EVENT_MOUSEMOVE:
             if "LBUTTONDOWN" in self.mouse_event_note:
                 (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
-                self.frame=numpy.copy(self.mouse_event_note["frame"])
+                self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
                 radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
-                cv2.circle(self.frame, (xp,yp), 1, (0, 0, 255), -1, 8, 10)
-                cv2.circle(self.frame, (xp,yp), int(radius), (0, 0, 255), 1)
+                cv2.circle(self.mouse_event_layer, (xp,yp), 1, (0, 0, 255,1), -1, 8, 10)
+                cv2.circle(self.mouse_event_layer, (xp,yp), int(radius), (0, 0, 255,1), 1)
 
     def select_rectangle_by_mouse(self,event, x, y, flags, param):
         """
@@ -191,22 +217,23 @@ class VideoViewer:
         if event == cv2.EVENT_LBUTTONUP:
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
             self.direction=self.mouse_event_note["direction"]
-            self.frame=numpy.copy(self.mouse_event_note["frame"])
+            self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
             self.mouse_event_note={}
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
             self.inputted_data.append((pos,xp,x,yp,y))
-            cv2.rectangle(self.frame, (xp, yp), (x,y), (0, 255, 255), 1)
+            cv2.rectangle(self.mouse_event_layer, (xp, yp), (x,y), (0, 255, 255,1), 1)
             print "rectangle: ", ((xp, yp), (x,y))            
         elif event == cv2.EVENT_LBUTTONDOWN:
             self.mouse_event_note["LBUTTONDOWN"]=(x,y)
             self.mouse_event_note["direction"]=self.direction
-            self.mouse_event_note["frame"]=self.frame
+            self.mouse_event_note["frame"]=self.mouse_event_layer
             self.direction=0
         elif  event == cv2.EVENT_MOUSEMOVE:
             if "LBUTTONDOWN" in self.mouse_event_note:
                 (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
-                self.frame=numpy.copy(self.mouse_event_note["frame"])
-                cv2.rectangle(self.frame, (xp, yp), (x,y), (0, 0, 255), 1)
+                self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
+                cv2.rectangle(self.mouse_event_layer, (xp, yp), (x,y), (0, 0, 255,1), 1)
+
 
     def select_point_by_mouse(self,event, x, y, flags, param):
         """
@@ -215,17 +242,17 @@ class VideoViewer:
         """
         if event == cv2.EVENT_LBUTTONUP:
 #            self.direction=self.mouse_event_note["direction"]
-            self.frame=numpy.copy(self.mouse_event_note["frame"])
+            self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
             self.mouse_event_note={}
-            cv2.rectangle(self.frame, (xp-1, yp-1), (xp+1,yp+1),(15, 100, 255), 2)
+            cv2.rectangle(self.mouse_event_layer, (xp-1, yp-1), (xp+1,yp+1),(15, 100, 255,1), 2)
             
         elif event == cv2.EVENT_LBUTTONDOWN:
             self.mouse_event_note["LBUTTONDOWN"]=(x,y)
             self.mouse_event_note["direction"]=self.direction
-            self.mouse_event_note["frame"]=numpy.copy(self.frame)
-            self.frame=numpy.copy(self.frame)
-            cv2.rectangle(self.frame, (x-1, y-1), (x+1,y+1), (255,0, 255), 1)
+            self.mouse_event_note["frame"]=numpy.copy(self.mouse_event_layer)
+            self.mouse_event_layer=numpy.copy(self.mouse_event_layer)
+            cv2.rectangle(self.mouse_event_layer, (x-1, y-1), (x+1,y+1), (255,0, 255,1), 1)
             self.direction=0
             print "point: ", (x,y)
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
@@ -252,6 +279,8 @@ class TrackingFilter(VideoViewer):
         self.flag_filter=False
         self.flag_tracking=False
         self.default_direction=0
+
+        self.set_modify_frame(self.frame_variant)
 
     def get_gray_image_for_template_match(self,frame):
         """
@@ -966,22 +995,22 @@ class TrackingFilter(VideoViewer):
         
         if event == cv2.EVENT_LBUTTONUP:
 #            self.direction=self.mouse_event_note["direction"]
-            self.frame=numpy.copy(self.mouse_event_note["frame"])
+            self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
             self.mouse_event_note={}
             (pt,f)=self.add_or_remove_from_tracked_point(xp,yp,4)
             if f>0:
-                cv2.circle(self.frame, pt, 1, (15, 100, 255), -1, 8, 10)
-                cv2.circle(self.frame, pt, self.radius_of_filter, (15, 100, 255), 1)
+                cv2.circle(self.mouse_event_layer, pt, 1, (15, 100, 255,1), -1, 8, 10)
+                cv2.circle(self.mouse_event_layer, pt, self.radius_of_filter, (15, 100, 255,1), 1)
             else:
-                cv2.circle(self.frame, pt, 1, (200, 100, 0), -1, 8, 10)
-                cv2.circle(self.frame, pt,  self.radius_of_filter, (200, 100, 0), 1)
+                cv2.circle(self.mouse_event_layer, pt, 1, (200, 100, 0,1), -1, 8, 10)
+                cv2.circle(self.mouse_event_layer, pt,  self.radius_of_filter, (200, 100, 0,1), 1)
             
         elif event == cv2.EVENT_LBUTTONDOWN:
             self.mouse_event_note["LBUTTONDOWN"]=(x,y)
             self.mouse_event_note["direction"]=self.direction
-            self.mouse_event_note["frame"]=numpy.copy(self.frame)
-            cv2.rectangle(self.frame, (x-1, y-1), (x+1,y+1), (255,0, 255), 1)
+            self.mouse_event_note["frame"]=numpy.copy(self.mouse_event_layer)
+            cv2.rectangle(self.mouse_event_layer, (x-1, y-1), (x+1,y+1), (255,0, 255,1), 1)
             self.direction=0
             print "point: ", (x,y)
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
@@ -1052,70 +1081,48 @@ class TrackingFilter(VideoViewer):
         self.tracked_point[pos]=features
         self.tracking_data_version[pos]=self.tracking_data_current_version
 
-    def update_frame(self,pos=None,verbose=True):
-        """
-        Update frame.
-        """
-        if not pos is None:
-            if pos>=0:
-                self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
-            else:
-                self.direction=0
-                self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-                if verbose:
-                    print "frameposition:", pos
-                    print "*This is the first frame.*"
-        (ret, oframe) = self.original.read()
-        if ret:
-            if self.flag_tracking:
-                self.update_trackingpoint_if_needed(oframe)
-            self.original_frame=numpy.copy(oframe)
-            frame=oframe
-            if self.flag_gray:
-                g=self.get_gray_image_for_template_match(frame)
-                if self.flag_templatematch:
-                    g=self.apply_template_match(g)
-                if self.flag_mask:
-                    mask=self.get_mask_for_opticalflow(frame)
-                    g=self.apply_mask(g,mask)
-                    
-                frame[:,:,0]=g
-                frame[:,:,1]=g
-                frame[:,:,2]=g
-            if self.flag_trackedpoint:
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                if pos in self.tracked_point:
-                    for (i,feature) in enumerate(self.tracked_point[pos]):
-                        cv2.circle(frame, (feature[0], feature[1]), 1, (15, 100, 255), -1, 8, 10)
-                        cv2.circle(frame, (feature[0], feature[1]),  self.radius_of_filter, (15, 100, 255), 1)
-                        for feature2 in self.tracked_point[pos][:i]:
-                            d=numpy.sqrt((feature[0]-feature2[0])**2+(feature[1]-feature2[1])**2)
-                            if d < 2*self.radius_of_filter:
-                                cv2.circle(frame, (feature[0], feature[1]),  self.radius_of_filter, (15, 250, 100), 1)
-                                cv2.circle(frame, (feature2[0], feature2[1]),  self.radius_of_filter, (15, 250, 100), 1)
-                            if d < 10:
-                                cv2.circle(frame, (feature[0], feature[1]), 1, (100, 250, 15), 2)
-                                cv2.circle(frame, (feature2[0], feature2[1]), 1, (100, 250, 15), 2)
-                    if pos-self.default_direction in self.tracked_point:
-                        for (f1,f2) in zip(self.tracked_point[pos],self.tracked_point[pos-self.default_direction]):
+    def frame_variant(self,oframe):
+        if self.flag_tracking:
+            self.update_trackingpoint_if_needed(oframe)
+        self.original_frame=numpy.copy(oframe)
+        frame=oframe
+        if self.flag_gray:
+            g=self.get_gray_image_for_template_match(frame)
+            if self.flag_templatematch:
+                g=self.apply_template_match(g)
+            if self.flag_mask:
+                mask=self.get_mask_for_opticalflow(frame)
+                g=self.apply_mask(g,mask)
+            frame[:,:,0]=g
+            frame[:,:,1]=g
+            frame[:,:,2]=g
+        if self.flag_trackedpoint:
+            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            if pos in self.tracked_point:
+                for (i,feature) in enumerate(self.tracked_point[pos]):
+                    cv2.circle(frame, (feature[0], feature[1]), 1, (15, 100, 255), -1, 8, 10)
+                    cv2.circle(frame, (feature[0], feature[1]),  self.radius_of_filter, (15, 100, 255), 1)
+                    for feature2 in self.tracked_point[pos][:i]:
+                        d=numpy.sqrt((feature[0]-feature2[0])**2+(feature[1]-feature2[1])**2)
+                        if d < 2*self.radius_of_filter:
+                            cv2.circle(frame, (feature[0], feature[1]),  self.radius_of_filter, (15, 250, 100), 1)
+                            cv2.circle(frame, (feature2[0], feature2[1]),  self.radius_of_filter, (15, 250, 100), 1)
+                        if d < 10:
+                            cv2.circle(frame, (feature[0], feature[1]), 1, (100, 250, 15), 2)
+                            cv2.circle(frame, (feature2[0], feature2[1]), 1, (100, 250, 15), 2)
+                if pos-self.default_direction in self.tracked_point:
+                    for (f1,f2) in zip(self.tracked_point[pos],self.tracked_point[pos-self.default_direction]):
+                        cv2.line(frame,(f1[0],f1[1]),(f2[0],f2[1]),(255,255,0),1)
+                    if pos-2*self.default_direction in self.tracked_point:
+                        for (f1,f2) in zip(self.tracked_point[pos-self.default_direction],self.tracked_point[pos-2*self.default_direction]):
                             cv2.line(frame,(f1[0],f1[1]),(f2[0],f2[1]),(255,255,0),1)
-                        if pos-2*self.default_direction in self.tracked_point:
-                            for (f1,f2) in zip(self.tracked_point[pos-self.default_direction],self.tracked_point[pos-2*self.default_direction]):
-                                cv2.line(frame,(f1[0],f1[1]),(f2[0],f2[1]),(255,255,0),1)
-            if self.flag_filter:
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
-                if pos in self.filter_position:
-                    frame=self.apply_filters(frame,self.filter_position[pos])
+        if self.flag_filter:
+            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            if pos in self.filter_position:
+                frame=self.apply_filters(frame,self.filter_position[pos])
 
-            self.frame = frame
-        else:
-            self.direction=0
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
-            if verbose:
-                print "frameposition:", pos
-                print "*This is the final frame.*"
-            
+        return frame
+        
 
 
 if __name__=="__main__":
