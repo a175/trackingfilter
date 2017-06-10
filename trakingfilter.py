@@ -23,6 +23,9 @@ class VideoViewer:
         h=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
         self.mouse_event_layer=numpy.zeros((h,w,4))
 
+    def get_current_frame_position(self):
+        return self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+
     def set_modify_frame(self,modify_frame):
         """
         Set a function to modify each frame
@@ -52,9 +55,7 @@ class VideoViewer:
             else:
                 self.direction=0
                 self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
                 if verbose:
-                    print "frameposition:", pos
                     print "*This is the first frame.*"
         (ret, frame) = self.original.read()
         if ret:
@@ -64,9 +65,7 @@ class VideoViewer:
             self.frames=frames
         else:
             self.direction=0
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
             if verbose:
-                print "frameposition:", pos
                 print "*This is the final frame.*"
 
     def show_command_list(self,xkeyeventtitle):
@@ -108,15 +107,15 @@ class VideoViewer:
                 self.update_frame()
                 if self.direction<50:
                     self.direction=self.direction-1
-                    pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                    pos=self.get_current_frame_position()
                     print "frameposition:", pos
             elif self.direction<0:
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                pos=self.get_current_frame_position()
                 pos=pos-1
                 self.update_frame(pos)
                 if self.direction>-50:
                     self.direction=self.direction+1
-                    pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                    pos=self.get_current_frame_position()
                     print "frameposition:", pos
             frame = self.overlap_layer(self.frames[self.frame_variation_to_show],self.mouse_event_layer)
             cv2.imshow('frame',frame)
@@ -145,13 +144,13 @@ class VideoViewer:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)-1
                 self.update_frame(pos)
                 self.direction=0
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                pos=self.get_current_frame_position()
                 print "frameposition:", pos
             elif keyinput == ord('<'):
                 pos=0
                 self.update_frame(pos)
                 self.direction=0
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                pos=self.get_current_frame_position()
                 print "frameposition:", pos
             elif keyinput == ord('u'):
                 if self.key_w_ring != []:
@@ -159,16 +158,16 @@ class VideoViewer:
                     self.key_w_ring.insert(0,pos)
                     self.update_frame(pos)
                     self.direction=0
-                    pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                    pos=self.get_current_frame_position()
                     print "frameposition:", pos
                     print "w_ring:",self.key_w_ring
             elif keyinput == ord('f'):
                 self.direction=100
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                pos=self.get_current_frame_position()
                 print "frameposition:", pos, "->"
             elif keyinput == ord('b'):
                 self.direction=-100
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                pos=self.get_current_frame_position()
                 print "frameposition:", pos, "<-"
             elif keyinput == ord('o'):
                 self.frame_variation_to_show=self.frame_variation_to_show-1
@@ -176,7 +175,7 @@ class VideoViewer:
                     self.frame_variation_to_show=self.frame_variation_to_show%len(self.frames)
                 print "frame variation:", self.frame_variation_to_show 
             elif keyinput == ord('w'):
-                pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+                pos=self.get_current_frame_position()
                 self.key_w_ring.append(pos)
                 self.direction=0
                 print "w:", pos
@@ -200,7 +199,7 @@ class VideoViewer:
             self.direction=self.mouse_event_note["direction"]
             self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
             self.mouse_event_note={}
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            pos=self.get_current_frame_position()
             self.inputted_data.append((pos,xp,x,yp,y))
             radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
             cv2.circle(self.mouse_event_layer, (xp, yp), 1, (0, 255, 255,1), -1, 8, 10)
@@ -230,7 +229,7 @@ class VideoViewer:
             self.direction=self.mouse_event_note["direction"]
             self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
             self.mouse_event_note={}
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            pos=self.get_current_frame_position()
             self.inputted_data.append((pos,xp,x,yp,y))
             cv2.rectangle(self.mouse_event_layer, (xp, yp), (x,y), (0, 255, 255,1), 1)
             print "rectangle: ", ((xp, yp), (x,y))            
@@ -266,7 +265,7 @@ class VideoViewer:
             cv2.rectangle(self.mouse_event_layer, (x-1, y-1), (x+1,y+1), (255,0, 255,1), 1)
             self.direction=0
             print "point: ", (x,y)
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            pos=self.get_current_frame_position()
             self.inputted_data.append((pos,x,y))
 
 
@@ -397,6 +396,25 @@ class TrackingFilter(PartcleFilter):
 
         self.set_modify_frame(self.frame_variant)
 
+    def reset_tracking_data_version(self, initpos):
+        """
+        Reset the version of tracking data.
+        """
+        self.tracking_data_current_version=0
+        self.tracking_data_version={}
+        self.tracking_data_version[initpos]=self.tracking_data_current_version
+
+    def reset_tracked_point(self,initpos):
+        self.tracked_point={}
+        self.tracked_point[initpos]=self.original_features[initpos]
+        self.tracked_previous_point={}
+        self.tracked_previous_point[initpos]=[]
+        self.waited_previous_point={}
+        self.waited_previous_point[initpos]=[]
+
+    def set_default_direction(self,direction):
+        self.default_direction=direction
+
     def get_gray_image_for_template_match(self,frame):
         """
         Returns the gray image for template match.
@@ -434,7 +452,7 @@ class TrackingFilter(PartcleFilter):
         g=self.apply_template_match(g)
         g=self.apply_mask(g,mask)
         return g
-            
+
     def set_outfile(self,outfilename):
         """
         Set the filename to output the modified video.
@@ -530,17 +548,19 @@ class TrackingFilter(PartcleFilter):
         i=0
         j=0
         previd=[]
+        notfoundid=[]
         if not features is None:
             while i < len(features):
                 if status[i] == 0:
                     features = numpy.delete(features, i, 0)
                     status = numpy.delete(status, i, 0)
+                    notfoundid.append(j)
                     i -= 1
                 else:
                     previd.append(j)
                 i = i+1
                 j = j+1
-        return (features,previd)
+        return (features,previd,notfoundid)
     
     
     def add_or_remove_from_tracked_point(self, x, y, r):
@@ -552,7 +572,7 @@ class TrackingFilter(PartcleFilter):
         otherwise append it.
         """
 
-        pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+        pos=self.get_current_frame_position()
         self.tracking_data_current_version=self.tracking_data_current_version+1
         self.tracking_data_version[pos]=self.tracking_data_current_version
         if pos in self.tracked_point:
@@ -560,18 +580,18 @@ class TrackingFilter(PartcleFilter):
             for feature in self.tracked_point[pos]:
                 if (x-feature[0])*(x-feature[0])+(y-feature[1])*(y-feature[1])<r*r:
                     self.tracked_point[pos] = numpy.delete(self.tracked_point[pos], i, 0)
-                    self.tracked_previous_point[pos].pop(i)
-                    return ((feature[0],feature[1]),-1)
+                    previd=self.tracked_previous_point[pos].pop(i)
+                    return ((feature[0],feature[1]),previd,-1)
                 else:
                     i=i+1
             self.tracked_point[pos] = numpy.append(self.tracked_point[pos], [[x, y]], axis = 0).astype(numpy.float32)
             self.tracked_previous_point[pos].append(None)
-            return ((x,y),1)
+            return ((x,y),None,1)
 
         else:
             self.tracked_point[pos]=numpy.array([[x, y]], numpy.float32)
             self.tracked_previous_point[pos]=[None]
-            return ((x,y),1)
+            return ((x,y),None,1)
         
     def get_mask_for_opticalflow(self,frame):
         """
@@ -622,9 +642,10 @@ class TrackingFilter(PartcleFilter):
         """
         If version is old then calculate optical flow.
         """
+        
         if self.direction*self.default_direction <= 0:
             return
-        pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+        pos=self.get_current_frame_position()
         if not pos-self.default_direction in self.tracking_data_version:
             return
         if pos in self.tracking_data_version:
@@ -632,13 +653,14 @@ class TrackingFilter(PartcleFilter):
                 return
         if not pos-self.default_direction in self.tracked_point:
             return
-        (features,previd)=self.track_optical_flow_between_frames(self.original_frame,oframe,self.tracked_point[pos-self.default_direction])
+        (features,previd,notfoundid)=self.track_optical_flow_between_frames(self.original_frame,oframe,self.tracked_point[pos-self.default_direction])
         if features is None:
             return
         self.tracked_point[pos]=features
         self.tracked_previous_point[pos]=previd
+        self.waited_previous_point[pos]=notfoundid
         self.tracking_data_version[pos]=self.tracking_data_current_version
-
+        
 class TrackingFilterUI(TrackingFilter):
     """
     UI of TrackingFilter
@@ -759,7 +781,7 @@ class TrackingFilterUI(TrackingFilter):
             elif keyinput == ord('v'):
                 self.set_gray_type("HSV:v")
                 print "graytype: v of HSV"
-        pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+        pos=self.get_current_frame_position()
         self.update_frame(pos)
 
                 
@@ -804,7 +826,7 @@ class TrackingFilterUI(TrackingFilter):
         elif keyinput == ord('1'):
             self.set_masktype("1")
             print "masktype: black",1
-        pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+        pos=self.get_current_frame_position()
         self.update_frame(pos)
 
     def select_templatematchingtype(self):
@@ -844,7 +866,7 @@ class TrackingFilterUI(TrackingFilter):
         elif keyinput == ord('a'):
             self.set_templatematchingtype("apply")
             print "Template matching: apply"
-        pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+        pos=self.get_current_frame_position()
         self.update_frame(pos)
 
     def select_template(self):
@@ -969,8 +991,6 @@ class TrackingFilterUI(TrackingFilter):
         self.flag_trackedpoint=True
         self.flag_filter=False
         self.flag_tracking=True
-        self.tracked_point={}
-        self.tracked_previous_point={}
         trackedpoints={}
         for initpos in self.original_features:
             print "Track points from the frame",initpos ,"to the final frame."
@@ -978,13 +998,9 @@ class TrackingFilterUI(TrackingFilter):
             print ""
             print "+","mouse click: remove it if there is a particle near; otherwise append new one;"
 
-            self.tracking_data_current_version=0
-            self.tracking_data_version={}
-            self.tracking_data_version[initpos]=self.tracking_data_current_version
-            self.default_direction=1
-            self.tracked_point={}
-            self.tracked_point[initpos]=self.original_features[initpos]
-            self.tracked_previous_point[initpos]=None
+            self.reset_tracking_data_version(initpos)
+            self.reset_tracked_point(initpos)
+            self.set_default_direction(1)
             cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
             cv2.setMouseCallback("frame", self.edit_tracked_points_by_mouse)
             flag=self.showvideo(initpos)
@@ -996,10 +1012,8 @@ class TrackingFilterUI(TrackingFilter):
             print "If [b] or [p] is used, then optical flow will be computed."
             print ""
             print "+","mouse click: remove it if there is a particle near; otherwise append new one;"
-            self.tracking_data_current_version=0
-            self.tracking_data_version={}
-            self.tracking_data_version[initpos]=self.tracking_data_current_version
-            self.default_direction=-1
+            self.reset_tracking_data_version(initpos)
+            self.set_default_direction(-1)
             cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
             cv2.setMouseCallback("frame", self.edit_tracked_points_by_mouse)
             flag=self.showvideo(initpos)
@@ -1122,7 +1136,7 @@ class TrackingFilterUI(TrackingFilter):
             cv2.rectangle(self.mouse_event_layer, (x-1, y-1), (x+1,y+1), (255,0, 255,1), 1)
             self.direction=0
             print "point: ", (x,y)
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            pos=self.get_current_frame_position()
             self.inputted_data.append((pos,x,y))
 
     def frame_variant(self,oframe):
@@ -1141,7 +1155,7 @@ class TrackingFilterUI(TrackingFilter):
             frame[:,:,1]=g
             frame[:,:,2]=g
         if self.flag_trackedpoint:
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            pos=self.get_current_frame_position()
             if pos in self.tracked_point:
                 for (i,feature) in enumerate(self.tracked_point[pos]):
                     cv2.circle(frame, (feature[0], feature[1]), 1, (15, 100, 255), -1, 8, 10)
@@ -1161,7 +1175,7 @@ class TrackingFilterUI(TrackingFilter):
                         for (f1,f2) in zip(self.tracked_point[pos-self.default_direction],self.tracked_point[pos-2*self.default_direction]):
                             cv2.line(frame,(f1[0],f1[1]),(f2[0],f2[1]),(255,255,0),1)
         if self.flag_filter:
-            pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
+            pos=self.get_current_frame_position()
             if pos in self.filter_position:
                 frame=self.apply_filters(frame,self.filter_position[pos])
 
