@@ -9,7 +9,8 @@ class VideoViewer:
         self.mouse_event_note={}
         self.mouse_event_result=[]
         self.direction=0
-        self.flag_original=False
+        self.frame_variation_to_show=-1
+        self.frames=[]
         self.modify_frame=modify_frame
         
     def set_original(self,video):
@@ -44,6 +45,7 @@ class VideoViewer:
         """
         Update frame.
         """
+        self.mouse_event_layer[:,:,:]=0
         if not pos is None:
             if pos>=0:
                 self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, pos)
@@ -54,24 +56,22 @@ class VideoViewer:
                 if verbose:
                     print "frameposition:", pos
                     print "*This is the first frame.*"
-        (ret, oframe) = self.original.read()
+        (ret, frame) = self.original.read()
         if ret:
+            frames=[numpy.copy(frame)]
             if not self.modify_frame is None:
-                oframe = self.modify_frame(oframe)
-                self.frame=oframe
+                frames = frames+self.modify_frame(frame)
+            self.frames=frames
         else:
             self.direction=0
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)
             if verbose:
                 print "frameposition:", pos
                 print "*This is the final frame.*"
-    
-    def showvideo(self,initialpos,xkeyevent=None, xkeyeventtitle="command mode"):
+
+    def show_command_list(self,xkeyeventtitle):
         """
-        Open window of video.
-        xkeyevent: function if x is typed.
-        If xkeyevnt is not None and x is typed, 
-        then xkeyevent() is called.
+        Prints command list for showvideo()
         """
         print "+","q|c: quit;"
         print "+","f: forward;"
@@ -84,12 +84,22 @@ class VideoViewer:
         print "+","<: pause at first frame;"
         print "+","u: rotate stored position and pause at last position;"
         print "+","w: store this frame position (and pause);"
-        print "+","o: toggle original/modified;"
+        print "+","o: change variation of modified frame (0 is original);"
         print "+","[: previous step"
         print "+","]: next step"
-        if not xkeyevent is None:
+        print "+","?: show this message"
+        if xkeyeventtitle!="":
             print "+","x:", xkeyeventtitle
         print ""
+
+    def showvideo(self,initialpos,xkeyevent=None, xkeyeventtitle=""):
+        """
+        Open window of video.
+        xkeyevent: function if x is typed.
+        If xkeyevnt is not None and x is typed, 
+        then xkeyevent() is called.
+        """
+        self.show_command_list(xkeyeventtitle)
         self.key_w_ring=[initialpos]
         print "frameposition:", initialpos
         self.update_frame(initialpos)
@@ -108,11 +118,8 @@ class VideoViewer:
                     self.direction=self.direction+1
                     pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                     print "frameposition:", pos
-            if self.flag_original:
-                cv2.imshow('frame',self.original_frame)
-            else:
-                frame = self.overlap_layer(self.frame,self.mouse_event_layer)
-                cv2.imshow('frame',frame)
+            frame = self.overlap_layer(self.frames[self.frame_variation_to_show],self.mouse_event_layer)
+            cv2.imshow('frame',frame)
             keyinput=cv2.waitKey(1) & 0xFF
             if keyinput == ord('q'):
                 print "Quit"
@@ -164,14 +171,18 @@ class VideoViewer:
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 print "frameposition:", pos, "<-"
             elif keyinput == ord('o'):
-                self.flag_original=not self.flag_original
-                print "originalframe:", self.flag_original
+                self.frame_variation_to_show=self.frame_variation_to_show-1
+                if not self.frames is None:
+                    self.frame_variation_to_show=self.frame_variation_to_show%len(self.frames)
+                print "frame variation:", self.frame_variation_to_show 
             elif keyinput == ord('w'):
                 pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
                 self.key_w_ring.append(pos)
                 self.direction=0
                 print "w:", pos
                 print "w_ring:",self.key_w_ring
+            elif keyinput == ord('?'):
+                self.show_command_list(xkeyeventtitle)
             elif keyinput == ord('x'):
                 if not xkeyevent is None:
                     print "x:", xkeyeventtitle
@@ -275,7 +286,6 @@ class TrackingFilter(VideoViewer):
         self.flag_templatematch=False
         self.flag_gray=False
         self.flag_trackedpoint=False
-        self.flag_original=False
         self.flag_filter=False
         self.flag_tracking=False
         self.default_direction=0
@@ -357,10 +367,10 @@ class TrackingFilter(VideoViewer):
         self.flag_mask=False
         self.flag_templatematch=False
         self.flag_trackedpoint=False
-        self.flag_original=False
         self.flag_filter=False
         self.flag_tracking=False
         self.default_direction=0
+        self.frame_variation_to_show=-1
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
         flag=self.showvideo(0)
@@ -392,10 +402,10 @@ class TrackingFilter(VideoViewer):
         self.flag_templatematch=False
         self.flag_gray=True
         self.flag_trackedpoint=False
-        self.flag_original=False
         self.flag_filter=False
         self.flag_tracking=False
         self.default_direction=0
+        self.frame_variation_to_show=-1
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
         flag=self.showvideo(0,
@@ -464,10 +474,11 @@ class TrackingFilter(VideoViewer):
         self.flag_templatematch=False
         self.flag_gray=True
         self.flag_trackedpoint=False
-        self.flag_original=False
         self.flag_filter=False
         self.flag_tracking=False
         self.default_direction=0
+        self.frame_variation_to_show=-1
+
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
         flag=self.showvideo(0,
@@ -513,10 +524,11 @@ class TrackingFilter(VideoViewer):
         self.flag_templatematch=True
         self.flag_gray=True
         self.flag_trackedpoint=False
-        self.flag_original=False
         self.flag_filter=False
         self.flag_tracking=False
         self.default_direction=0
+        self.frame_variation_to_show=-1
+
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
         flag=self.showvideo(0,
@@ -561,10 +573,10 @@ class TrackingFilter(VideoViewer):
         self.flag_templatematch=False
         self.flag_gray=True
         self.flag_trackedpoint=False
-        self.flag_original=False
         self.flag_filter=False
         self.flag_tracking=False
         self.default_direction=0
+        self.frame_variation_to_show=-1
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         cv2.setMouseCallback("frame", self.select_rectangle_by_mouse)
@@ -620,10 +632,11 @@ class TrackingFilter(VideoViewer):
         self.flag_templatematch=False
         self.flag_gray=False
         self.flag_trackedpoint=False
-        self.flag_original=False
         self.flag_filter=False
         self.flag_tracking=False
         self.default_direction=0
+        self.frame_variation_to_show=-1
+
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         cv2.setMouseCallback("frame", self.select_circle_by_mouse)
@@ -677,10 +690,11 @@ class TrackingFilter(VideoViewer):
         self.flag_templatematch=True
         self.flag_gray=True
         self.flag_trackedpoint=False
-        self.flag_original=False
         self.flag_filter=False
         self.flag_tracking=False
         self.default_direction=0
+        self.frame_variation_to_show=-1
+
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
         cv2.setMouseCallback("frame", self.select_point_by_mouse)        
@@ -725,7 +739,6 @@ class TrackingFilter(VideoViewer):
         self.flag_templatematch=False
         self.flag_gray=False
         self.flag_trackedpoint=True
-        self.flag_original=False
         self.flag_filter=False
         self.flag_tracking=True
         self.tracked_point={}
@@ -835,7 +848,6 @@ class TrackingFilter(VideoViewer):
         self.flag_templatematch=False
         self.flag_gray=False
         self.flag_trackedpoint=False
-        self.flag_original=False
         self.flag_filter=True
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         flag=self.showvideo(0)
@@ -1121,7 +1133,7 @@ class TrackingFilter(VideoViewer):
             if pos in self.filter_position:
                 frame=self.apply_filters(frame,self.filter_position[pos])
 
-        return frame
+        return [frame]
         
 
 
