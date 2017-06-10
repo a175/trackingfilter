@@ -269,15 +269,120 @@ class VideoViewer:
             pos=self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
             self.inputted_data.append((pos,x,y))
 
-class TrackingFilter(VideoViewer):
+
+class PartcleFilter(VideoViewer):
+    def __init__(self):
+        VideoViewer.__init__(self)
+        self.filter_list={}
+    
+    def reset_filter_position(self):
+        """
+        Reset positions to apply filter.
+        """
+        
+        self.filter_position={}
+        
+    def append_filter_position(self,pos,x,y,r):
+        """
+        Append positions and radius of filter to apply filter.
+        pos: frame number to apply
+        x, y: coordinate (of center of filter).
+        r: key of the dictionary of filters.
+        """
+        
+        if not pos in self.filter_position:
+            self.filter_position[pos]=[]
+        self.filter_position[pos].append((x,y,r))
+    
+    def save_modified_video(self,outfile,verbose=-1):
+        """
+        Save the modified video as outfile.
+        verbose: Comment each 100/verbose %  if verbose>0
+                 Comment each frame  if verbose=0
+                 Ommit comment if verbose<0
+        """
+        
+        fps=self.original.get(cv2.cv.CV_CAP_PROP_FPS)
+        n_frames=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
+        if verbose>0:
+            step=n_frames/verbose
+        else:
+            step=0
+        flag=step
+        w=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)
+        h=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
+        fourcc = cv2.cv.CV_FOURCC(*'XVID')
+        out = cv2.VideoWriter(outfile,fourcc,fps, (int(w),int(h)))
+        
+        self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES,0)
+        pos=0
+        while(self.original.isOpened()):
+            (ret, frame) = self.original.read()
+            if ret:
+                if pos in self.filter_position:
+                    frame=self.apply_filters(frame,self.filter_position[pos])
+                out.write(frame)
+            else:
+                break
+            pos=pos+1
+            if verbose>=0:
+                if pos > flag:
+                    flag=flag+step
+                    print "+ Done ", pos,"/",n_frames
+        if verbose>=0:
+            print "+ Done."
+        out.release()
+        self.original.release()
+
+    def apply_filters(self,frame,filters):
+        """
+        Apply the filters to frame.
+        """
+        
+        frame=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        fl=numpy.zeros(frame[:,:,0].shape)
+        ma=numpy.zeros(frame[:,:,0].shape)
+        for (y,x,r) in filters:
+            (f,m,x0,y0,x1,y1)=self.filter_list[r]
+            if fl[x+x0:x+x1,y+y0:y+y1].shape == f.shape:
+                fl[x+x0:x+x1,y+y0:y+y1]=(fl[x+x0:x+x1,y+y0:y+y1]+f)
+                ma[x+x0:x+x1,y+y0:y+y1]=(ma[x+x0:x+x1,y+y0:y+y1]+m)
+        ma=numpy.abs(ma-0.5)+0.5
+        fl=fl/ma
+        fl=cv2.GaussianBlur(fl,(5,5),0)
+        frame[:,:,0]=(frame[:,:,0]+fl[:,:])%180
+        frame=cv2.cvtColor(frame, cv2.COLOR_HSV2BGR)
+        return frame
+
+    def filter_weight(self,x,y,r):
+        d=numpy.sqrt(x**2+y**2)
+        if d>r:
+            w=0
+        else:
+            w=1
+        return w
+
+    def append_filter_to_dict(self,radius):
+        """
+        Create a filter with the radius.
+        Append it and its infomation (mask, margin, size)
+        to the dictionary with key `radius`.
+        """
+        
+        r=int(radius)
+        f=numpy.array([[ 60*self.filter_weight(i-r,j-r,radius)  for j in range(2*r)] for i in range(2*r)],numpy.float32)
+        (ret,m)=cv2.threshold(f,1,255,cv2.THRESH_TRUNC)
+        self.filter_list[r]=(f,m,-r,-r,r,r)
+
+
+class TrackingFilter(PartcleFilter):
     """
     Change the color of some particles in the video.
     """
     def __init__(self):
-        VideoViewer.__init__(self)
+        PartcleFilter.__init__(self)
         self.bg=[]
         self.template=[]
-        self.filter_list={}
         self.set_masktype("1")
         self.set_templatematchingtype("apply")
         self.features=None
@@ -377,29 +482,14 @@ class TrackingFilter(VideoViewer):
         gray = self.get_gray_image_for_template_match(frame)
         self.template.append(gray[yp:y,xp:x])
 
-    def filter_weight(self,x,y):
-        r=self.radius_of_filter
-        d=numpy.sqrt(x**2+y**2)
-        #w=min(1,4*max(0,1-(d/r)**2))
-        if d>r:
-            w=0
-        else:
-            w=1
-        return w
-
     def set_radius_of_filter(self,radius):
         """
-        Create a filter with the radius.
-        Append it and its infomation (mask, margin, size)
-        to the dictionary with key `radius`.
+        Append a filter with radius to dictionary.
         And set radius of filter to use.
         """
         self.radius_of_filter=int(radius)
-        r=self.radius_of_filter
-        f=numpy.array([[ 60*self.filter_weight(i-r,j-r)  for j in range(2*r)] for i in range(2*r)],numpy.float32)
-        (ret,m)=cv2.threshold(f,1,255,cv2.THRESH_TRUNC)
-        self.filter_list[r]=(f,m,-r,-r,r,r)
-    
+        self.append_filter_to_dict(self.radius_of_filter)
+
     def reset_original_features(self):
         """
         Reset the initial positions to calculate optical flows.
@@ -417,23 +507,6 @@ class TrackingFilter(VideoViewer):
         else:
             self.original_features[pos] = numpy.array([[x, y]], numpy.float32)
             
-    
-    def reset_filter_position(self):
-        """
-        Reset positions to apply filter.
-        """
-        self.filter_position={}
-        
-    def append_filter_position(self,pos,x,y,r):
-        """
-        Append positions and radius of filter to apply filter.
-        pos: frame number to apply
-        x, y: coordinate (of center of filter).
-        r: key of the dictionary of filters.
-        """
-        if not pos in self.filter_position:
-            self.filter_position[pos]=[]
-        self.filter_position[pos].append((x,y,r))
     
     def track_optical_flow_between_frames(self,frame_p,frame,features_p):
         """
@@ -469,62 +542,6 @@ class TrackingFilter(VideoViewer):
                 j = j+1
         return (features,previd)
     
-    def save_modified_video(self,outfile,verbose=-1):
-        """
-        Save the modified video as outfile.
-        verbose: Comment each 100/verbose %  if verbose>0
-                 Comment each frame  if verbose=0
-        """
-        fps=self.original.get(cv2.cv.CV_CAP_PROP_FPS)
-        n_frames=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
-        if verbose>0:
-            step=n_frames/verbose
-        else:
-            step=0
-        flag=step
-        w=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)
-        h=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
-        fourcc = cv2.cv.CV_FOURCC(*'XVID')
-        out = cv2.VideoWriter(outfile,fourcc,fps, (int(w),int(h)))
-        
-        self.original.set(cv2.cv.CV_CAP_PROP_POS_FRAMES,0)
-        pos=0
-        while(self.original.isOpened()):
-            (ret, frame) = self.original.read()
-            if ret:
-                if pos in self.filter_position:
-                    frame=self.apply_filters(frame,self.filter_position[pos])
-                out.write(frame)
-            else:
-                break
-            pos=pos+1
-            if verbose>=0:
-                if pos > flag:
-                    flag=flag+step
-                    print "+ Done ", pos,"/",n_frames
-        if verbose>=0:
-            print "+ Done."
-        out.release()
-        self.original.release()
-        
-    def apply_filters(self,frame,filters):
-        """
-        Apply the filters to frame.
-        """
-        frame=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        fl=numpy.zeros(frame[:,:,0].shape)
-        ma=numpy.zeros(frame[:,:,0].shape)
-        for (y,x,r) in filters:
-            (f,m,x0,y0,x1,y1)=self.filter_list[r]
-            if fl[x+x0:x+x1,y+y0:y+y1].shape == f.shape:
-                fl[x+x0:x+x1,y+y0:y+y1]=(fl[x+x0:x+x1,y+y0:y+y1]+f)
-                ma[x+x0:x+x1,y+y0:y+y1]=(ma[x+x0:x+x1,y+y0:y+y1]+m)
-        ma=numpy.abs(ma-0.5)+0.5
-        fl=fl/ma
-        fl=cv2.GaussianBlur(fl,(5,5),0)
-        frame[:,:,0]=(frame[:,:,0]+fl[:,:])%180
-        frame=cv2.cvtColor(frame, cv2.COLOR_HSV2BGR)
-        return frame
     
     def add_or_remove_from_tracked_point(self, x, y, r):
         """
@@ -542,19 +559,16 @@ class TrackingFilter(VideoViewer):
             i=0
             for feature in self.tracked_point[pos]:
                 if (x-feature[0])*(x-feature[0])+(y-feature[1])*(y-feature[1])<r*r:
-                    print "remove", i, feature
                     self.tracked_point[pos] = numpy.delete(self.tracked_point[pos], i, 0)
                     self.tracked_previous_point[pos].pop(i)
                     return ((feature[0],feature[1]),-1)
                 else:
                     i=i+1
-            print "add", x,y
             self.tracked_point[pos] = numpy.append(self.tracked_point[pos], [[x, y]], axis = 0).astype(numpy.float32)
             self.tracked_previous_point[pos].append(None)
             return ((x,y),1)
 
         else:
-            print "add", x,y, "."
             self.tracked_point[pos]=numpy.array([[x, y]], numpy.float32)
             self.tracked_previous_point[pos]=[None]
             return ((x,y),1)
@@ -1093,9 +1107,11 @@ class TrackingFilterUI(TrackingFilter):
             self.mouse_event_note={}
             (pt,f)=self.add_or_remove_from_tracked_point(xp,yp,4)
             if f>0:
+                print "add", x,y, "."
                 cv2.circle(self.mouse_event_layer, pt, 1, (15, 100, 255,1), -1, 8, 10)
                 cv2.circle(self.mouse_event_layer, pt, self.radius_of_filter, (15, 100, 255,1), 1)
             else:
+                print "remove", x,y, "."
                 cv2.circle(self.mouse_event_layer, pt, 1, (200, 100, 0,1), -1, 8, 10)
                 cv2.circle(self.mouse_event_layer, pt,  self.radius_of_filter, (200, 100, 0,1), 1)
             
