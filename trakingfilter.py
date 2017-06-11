@@ -392,8 +392,8 @@ class TrackingFilter(PartcleFilter):
         self.flag_trackedpoint=False
         self.flag_filter=False
         self.flag_tracking=False
-        self.default_direction=0
-
+        
+        self.default_direction=1
         self.set_modify_frame(self.frame_variant)
 
     def reset_tracking_data_version(self, initpos):
@@ -581,16 +581,22 @@ class TrackingFilter(PartcleFilter):
                 if (x-feature[0])*(x-feature[0])+(y-feature[1])*(y-feature[1])<r*r:
                     self.tracked_point[pos] = numpy.delete(self.tracked_point[pos], i, 0)
                     previd=self.tracked_previous_point[pos].pop(i)
+                    self.waited_previous_point[pos].append(previd)
                     return ((feature[0],feature[1]),previd,-1)
                 else:
                     i=i+1
             self.tracked_point[pos] = numpy.append(self.tracked_point[pos], [[x, y]], axis = 0).astype(numpy.float32)
-            self.tracked_previous_point[pos].append(None)
-            return ((x,y),None,1)
+            if len(self.waited_previous_point[pos])>0:
+                previd=self.waited_previous_point[pos].pop()
+            else:
+                previd=None
+            self.tracked_previous_point[pos].append(previd)
+            return ((x,y),previd,1)
 
         else:
             self.tracked_point[pos]=numpy.array([[x, y]], numpy.float32)
             self.tracked_previous_point[pos]=[None]
+            self.waited_previous_point[pos]=[]
             return ((x,y),None,1)
         
     def get_mask_for_opticalflow(self,frame):
@@ -701,7 +707,6 @@ class TrackingFilterUI(TrackingFilter):
         self.flag_trackedpoint=False
         self.flag_filter=False
         self.flag_tracking=False
-        self.default_direction=0
         self.frame_variation_to_show=-1
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
@@ -728,7 +733,6 @@ class TrackingFilterUI(TrackingFilter):
         self.flag_trackedpoint=False
         self.flag_filter=False
         self.flag_tracking=False
-        self.default_direction=0
         self.frame_variation_to_show=-1
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
@@ -794,7 +798,6 @@ class TrackingFilterUI(TrackingFilter):
         self.flag_trackedpoint=False
         self.flag_filter=False
         self.flag_tracking=False
-        self.default_direction=0
         self.frame_variation_to_show=-1
 
 
@@ -838,7 +841,6 @@ class TrackingFilterUI(TrackingFilter):
         self.flag_trackedpoint=False
         self.flag_filter=False
         self.flag_tracking=False
-        self.default_direction=0
         self.frame_variation_to_show=-1
 
 
@@ -925,7 +927,6 @@ class TrackingFilterUI(TrackingFilter):
         self.flag_trackedpoint=False
         self.flag_filter=False
         self.flag_tracking=False
-        self.default_direction=0
         self.frame_variation_to_show=-1
 
 
@@ -960,7 +961,6 @@ class TrackingFilterUI(TrackingFilter):
         self.flag_trackedpoint=False
         self.flag_filter=False
         self.flag_tracking=False
-        self.default_direction=0
         self.frame_variation_to_show=-1
 
 
@@ -1119,9 +1119,9 @@ class TrackingFilterUI(TrackingFilter):
             self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
             self.mouse_event_note={}
-            (pt,f)=self.add_or_remove_from_tracked_point(xp,yp,4)
+            (pt,previd,f)=self.add_or_remove_from_tracked_point(xp,yp,4)
             if f>0:
-                print "add", x,y, "."
+                print "add", x,y, "." 
                 cv2.circle(self.mouse_event_layer, pt, 1, (15, 100, 255,1), -1, 8, 10)
                 cv2.circle(self.mouse_event_layer, pt, self.radius_of_filter, (15, 100, 255,1), 1)
             else:
@@ -1138,6 +1138,34 @@ class TrackingFilterUI(TrackingFilter):
             print "point: ", (x,y)
             pos=self.get_current_frame_position()
             self.inputted_data.append((pos,x,y))
+
+    def x_tracked_pair(self,pos,prevpos):
+        """
+        Yields pairs of tracked pair between pos and prevpos
+        """
+
+        if not pos in self.tracked_point:
+            return
+        if not prevpos in self.tracked_point:
+            return
+        if not pos in self.tracked_previous_point:
+            return
+
+        ppt=self.tracked_point[prevpos]
+        for (f1,pid) in zip(self.tracked_point[pos],self.tracked_previous_point[pos]):
+            if pid is None:
+                continue
+            yield ((f1[0],f1[1]),(ppt[pid][0],ppt[pid][1]))
+
+    def x_pair_of_close_point(self,points,r):
+        """
+        yields pair of points closer than r
+        """
+        for (i,pti) in enumerate(points):
+            for ptj in points[:i]:
+                d=numpy.sqrt((pti[0]-ptj[0])**2+(pti[1]-ptj[1])**2)
+                if d < r:
+                    yield ((pti[0],pti[1]),(ptj[0],ptj[1]))
 
     def frame_variant(self,oframe):
         if self.flag_tracking:
@@ -1157,23 +1185,25 @@ class TrackingFilterUI(TrackingFilter):
         if self.flag_trackedpoint:
             pos=self.get_current_frame_position()
             if pos in self.tracked_point:
-                for (i,feature) in enumerate(self.tracked_point[pos]):
-                    cv2.circle(frame, (feature[0], feature[1]), 1, (15, 100, 255), -1, 8, 10)
-                    cv2.circle(frame, (feature[0], feature[1]),  self.radius_of_filter, (15, 100, 255), 1)
-                    for feature2 in self.tracked_point[pos][:i]:
-                        d=numpy.sqrt((feature[0]-feature2[0])**2+(feature[1]-feature2[1])**2)
-                        if d < 2*self.radius_of_filter:
-                            cv2.circle(frame, (feature[0], feature[1]),  self.radius_of_filter, (15, 250, 100), 1)
-                            cv2.circle(frame, (feature2[0], feature2[1]),  self.radius_of_filter, (15, 250, 100), 1)
-                        if d < 10:
-                            cv2.circle(frame, (feature[0], feature[1]), 1, (100, 250, 15), 2)
-                            cv2.circle(frame, (feature2[0], feature2[1]), 1, (100, 250, 15), 2)
-                if pos-self.default_direction in self.tracked_point:
-                    for (f1,f2) in zip(self.tracked_point[pos],self.tracked_point[pos-self.default_direction]):
-                        cv2.line(frame,(f1[0],f1[1]),(f2[0],f2[1]),(255,255,0),1)
-                    if pos-2*self.default_direction in self.tracked_point:
-                        for (f1,f2) in zip(self.tracked_point[pos-self.default_direction],self.tracked_point[pos-2*self.default_direction]):
-                            cv2.line(frame,(f1[0],f1[1]),(f2[0],f2[1]),(255,255,0),1)
+                for tt in range(3):
+                    pos0=pos-tt*self.default_direction
+                    pos1=pos-(tt+1)*self.default_direction
+                    for (a,b) in self.x_tracked_pair(pos0,pos1):
+                        cv2.line(frame,a,b,(100,255,200-80*tt),1)
+                    pos1=pos+tt*self.default_direction
+                    pos0=pos+(tt+1)*self.default_direction
+                    for (a,b) in self.x_tracked_pair(pos0,pos1):
+                        cv2.line(frame,a,b,(100,200-80*tt,200),1)
+                for pt in self.tracked_point[pos]:
+                    cv2.circle(frame, (pt[0], pt[1]), 1, (15, 100, 255), -1, 8, 10)
+                    cv2.circle(frame, (pt[0], pt[1]),  self.radius_of_filter, (15, 100, 255), 1)
+                for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],2*10):
+                    cv2.circle(frame,a, 1, (100, 250, 15), 2)
+                    cv2.circle(frame,b, 1, (100, 250, 15), 2)
+                for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],2*self.radius_of_filter):
+                    cv2.circle(frame,a,self.radius_of_filter,(15, 250, 100),1)
+                    cv2.circle(frame,b,self.radius_of_filter,(15, 250, 100),1)
+                    
         if self.flag_filter:
             pos=self.get_current_frame_position()
             if pos in self.filter_position:
