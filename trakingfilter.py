@@ -401,7 +401,7 @@ class TrackingFilter(PartcleFilter):
         self.tracked_point={}
         self.tracked_point[initpos]=self.original_features[initpos]
         self.tracked_previous_point={}
-        self.tracked_previous_point[initpos]=[]
+        self.tracked_previous_point[initpos]=[None for i in self.tracked_point[initpos]]
         self.waited_previous_point={}
         self.waited_previous_point[initpos]=[]
 
@@ -1032,13 +1032,19 @@ class TrackingFilterUI(TrackingFilter):
         g=self.get_gray_image_for_optical_flow(frame)
         frame[:,:,0]=g
         frame[:,:,1]=g
-        frame[:,:,2]=g
-        frame=self.draw_tracked_pairs(frame,pos)
+        frame[:,:,2]=g        
+        frame=self.draw_tracked_pairs_n(frame,pos)
+        frame=self.draw_tracked_points(frame,pos)
+        modifiedframes.append(numpy.copy(frame))
+        frame=self.draw_tracked_pairs_p(frame,pos)
         frame=self.draw_tracked_points(frame,pos)
         modifiedframes.append(numpy.copy(frame))
 
         frame=numpy.copy(oframe)
-        frame=self.draw_tracked_pairs(frame,pos)
+        frame=self.draw_tracked_pairs_n(frame,pos)
+        frame=self.draw_tracked_points(frame,pos)
+        modifiedframes.append(numpy.copy(frame))
+        frame=self.draw_tracked_pairs_p(frame,pos)
         frame=self.draw_tracked_points(frame,pos)
         modifiedframes.append(numpy.copy(frame))
         return modifiedframes
@@ -1251,10 +1257,12 @@ class TrackingFilterUI(TrackingFilter):
             return
 
         ppt=self.tracked_point[prevpos]
+        plen=len(ppt)
         for (f1,pid) in zip(self.tracked_point[pos],self.tracked_previous_point[pos]):
             if pid is None:
                 continue
-            yield ((f1[0],f1[1]),(ppt[pid][0],ppt[pid][1]))
+            if pid < plen:
+                yield ((f1[0],f1[1]),(ppt[pid][0],ppt[pid][1]))
 
     def x_pair_of_close_point(self,points,r):
         """
@@ -1266,20 +1274,28 @@ class TrackingFilterUI(TrackingFilter):
                 if d < r:
                     yield ((pti[0],pti[1]),(ptj[0],ptj[1]))
                     
-    def draw_tracked_pairs(self,frame,pos):
+    def draw_tracked_pairs_p(self,frame,pos):
         """
         Draw lines between pair of racked points in pos to frame.
         """
         if pos in self.tracked_point:
-            for tt in range(3):
-                pos0=pos-tt*self.default_direction
-                pos1=pos-(tt+1)*self.default_direction
-                for (a,b) in self.x_tracked_pair(pos0,pos1):
-                    cv2.line(frame,a,b,(100,255,200-80*tt),1)
+            for tt in range(5):
                 pos1=pos+tt*self.default_direction
                 pos0=pos+(tt+1)*self.default_direction
                 for (a,b) in self.x_tracked_pair(pos0,pos1):
-                    cv2.line(frame,a,b,(100,200-80*tt,200),1)
+                    cv2.line(frame,a,b,(200-40*tt,200-40*tt,200),1)
+        return frame
+
+    def draw_tracked_pairs_n(self,frame,pos):
+        """
+        Draw lines between pair of racked points in pos to frame.
+        """
+        if pos in self.tracked_point:
+            for tt in range(5):
+                pos0=pos-tt*self.default_direction
+                pos1=pos-(tt+1)*self.default_direction
+                for (a,b) in self.x_tracked_pair(pos0,pos1):
+                    cv2.line(frame,a,b,(100,255,200-40*tt),1)
         return frame
 
     def draw_tracked_points(self,frame,pos):
@@ -1290,7 +1306,7 @@ class TrackingFilterUI(TrackingFilter):
             for pt in self.tracked_point[pos]:
                 cv2.circle(frame, (pt[0], pt[1]), 1, (15, 100, 255), -1, 8, 10)
                 cv2.circle(frame, (pt[0], pt[1]),  self.radius_of_filter, (15, 100, 255), 1)
-            for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],2*10):
+            for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],10):
                 cv2.circle(frame,a, 1, (100, 250, 15), 2)
                 cv2.circle(frame,b, 1, (100, 250, 15), 2)
             for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],2*self.radius_of_filter):
