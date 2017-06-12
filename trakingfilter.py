@@ -292,7 +292,7 @@ class PartcleFilter(VideoViewer):
         if not pos in self.filter_position:
             self.filter_position[pos]=[]
         self.filter_position[pos].append((x,y,r))
-    
+
     def save_modified_video(self,outfile,verbose=-1):
         """
         Save the modified video as outfile.
@@ -555,7 +555,22 @@ class TrackingFilter(PartcleFilter):
                 j = j+1
         return (features,previd,notfoundid)
     
-    
+    def add_or_remove_from_filterposition(self, pos, x, y, r):
+        """
+        If 
+        the distance of between a point in self.filter and (x,y)
+        is less that r,
+        then remove it;
+        otherwise append it.
+        """
+        if pos in self.filter_position:
+            for (i,(xi,yi,ri)) in enumerate(self.filter_position[pos]):
+                if (x-xi)**2+(y-yi)**2<r**2:
+                    self.filter_position[pos].pop(i)
+                    return ((xi,yi),ri,-1)
+        self.append_filter_position(pos,x,y,self.radius_of_filter)
+        return ((x,y),self.radius_of_filter,1)
+
     def add_or_remove_from_tracked_point(self, x, y, r):
         """
         If 
@@ -1102,11 +1117,23 @@ class TrackingFilterUI(TrackingFilter):
         self.set_modify_frame(self.modify_frame_to_check_filter)
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
+        cv2.setMouseCallback("frame", self.edit_filterposition_by_mouse)
         flag=self.showvideo(0,"frame")
         cv2.destroyWindow("frame")
         if flag <= 0:
             return flag
-        print "save as", self.outfile
+        print ""
+        print "``` python"
+        print "tf.reset_filter_position()"
+        for pos in self.filter_position:
+            print "ff=",self.filter_position[pos]
+            print "for (x,y,r) in ff:"
+            print "    tf.append_filter_position(",pos,",x,y,r,)"
+            print ""
+        print "```"
+        print ""
+
+        print "Save modified video as", self.outfile
         self.save_modified_video(self.outfile,10)
         print ""
         print ""
@@ -1150,6 +1177,36 @@ class TrackingFilterUI(TrackingFilter):
 
         print "end."
         
+    def edit_filterposition_by_mouse(self,event, x, y, flags, param):
+        """
+        Select point to add or remove.
+        This is used as mouse event callback.
+        """
+        pos=self.get_current_frame_position()
+        if event == cv2.EVENT_LBUTTONUP:
+#            self.direction=self.mouse_event_note["direction"]
+            self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
+            (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
+            self.mouse_event_note={}
+            (pt,r,f)=self.add_or_remove_from_filterposition(pos,xp,yp,4)
+            if f>0:
+                print "add", x,y, "." 
+                cv2.circle(self.mouse_event_layer, pt, 1, (15, 100, 255,1), -1, 8, 10)
+                cv2.circle(self.mouse_event_layer, pt, self.radius_of_filter, (15, 100, 255,1), 1)
+            else:
+                print "remove", x,y, ".", pt
+                cv2.circle(self.mouse_event_layer, pt, 1, (200, 100, 0,1), -1, 8, 10)
+                cv2.circle(self.mouse_event_layer, pt,  self.radius_of_filter, (200, 100, 0,1), 1)
+            
+        elif event == cv2.EVENT_LBUTTONDOWN:
+            self.mouse_event_note["LBUTTONDOWN"]=(x,y)
+            self.mouse_event_note["direction"]=self.direction
+            self.mouse_event_note["frame"]=numpy.copy(self.mouse_event_layer)
+            cv2.rectangle(self.mouse_event_layer, (x-1, y-1), (x+1,y+1), (255,0, 255,1), 1)
+            self.direction=0
+            print "point: ", (x,y)
+            self.inputted_data.append((pos,x,y))
+
     def edit_tracked_points_by_mouse(self,event, x, y, flags, param):
         """
         Select point to add or remove.
