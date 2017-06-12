@@ -192,7 +192,7 @@ class VideoViewer:
     def select_circle_by_mouse(self,event, x, y, flags, param):
         """
         Select circle and append to self.inputted_data.
-        This is used as mouse event fallback.
+        This is used as mouse event callback.
         """
         if event == cv2.EVENT_LBUTTONUP:
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
@@ -222,7 +222,7 @@ class VideoViewer:
     def select_rectangle_by_mouse(self,event, x, y, flags, param):
         """
         Select rectangle and append to self.inputted_data.
-        This is used as mouse event fallback.
+        This is used as mouse event callback.
         """
         if event == cv2.EVENT_LBUTTONUP:
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
@@ -248,7 +248,7 @@ class VideoViewer:
     def select_point_by_mouse(self,event, x, y, flags, param):
         """
         Select point and append to self.inputted_data.
-        This is used as mouse event fallback.
+        This is used as mouse event callback.
         """
         if event == cv2.EVENT_LBUTTONUP:
 #            self.direction=self.mouse_event_note["direction"]
@@ -1111,7 +1111,7 @@ class TrackingFilterUI(TrackingFilter):
     def edit_tracked_points_by_mouse(self,event, x, y, flags, param):
         """
         Select point to add or remove.
-        This is used as mouse event fallback.
+        This is used as mouse event callback.
         """
         
         if event == cv2.EVENT_LBUTTONUP:
@@ -1166,12 +1166,38 @@ class TrackingFilterUI(TrackingFilter):
                 d=numpy.sqrt((pti[0]-ptj[0])**2+(pti[1]-ptj[1])**2)
                 if d < r:
                     yield ((pti[0],pti[1]),(ptj[0],ptj[1]))
-
+                    
+    def draw_tracked_points(self,frame,pos):
+        """
+        Draw tracked point in pos to frame.
+        """
+        if pos in self.tracked_point:
+            for tt in range(3):
+                pos0=pos-tt*self.default_direction
+                pos1=pos-(tt+1)*self.default_direction
+                for (a,b) in self.x_tracked_pair(pos0,pos1):
+                    cv2.line(frame,a,b,(100,255,200-80*tt),1)
+                pos1=pos+tt*self.default_direction
+                pos0=pos+(tt+1)*self.default_direction
+                for (a,b) in self.x_tracked_pair(pos0,pos1):
+                    cv2.line(frame,a,b,(100,200-80*tt,200),1)
+            for pt in self.tracked_point[pos]:
+                cv2.circle(frame, (pt[0], pt[1]), 1, (15, 100, 255), -1, 8, 10)
+                cv2.circle(frame, (pt[0], pt[1]),  self.radius_of_filter, (15, 100, 255), 1)
+            for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],2*10):
+                cv2.circle(frame,a, 1, (100, 250, 15), 2)
+                cv2.circle(frame,b, 1, (100, 250, 15), 2)
+            for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],2*self.radius_of_filter):
+                cv2.circle(frame,a,self.radius_of_filter,(15, 250, 100),1)
+                cv2.circle(frame,b,self.radius_of_filter,(15, 250, 100),1)
+        return frame
+    
     def frame_variant(self,oframe):
+        modifiedframes=[]
         if self.flag_tracking:
             self.update_trackingpoint_if_needed(oframe)
         self.original_frame=numpy.copy(oframe)
-        frame=oframe
+        frame=numpy.copy(oframe)
         if self.flag_gray:
             g=self.get_gray_image_for_template_match(frame)
             if self.flag_templatematch:
@@ -1182,34 +1208,21 @@ class TrackingFilterUI(TrackingFilter):
             frame[:,:,0]=g
             frame[:,:,1]=g
             frame[:,:,2]=g
-        if self.flag_trackedpoint:
-            pos=self.get_current_frame_position()
-            if pos in self.tracked_point:
-                for tt in range(3):
-                    pos0=pos-tt*self.default_direction
-                    pos1=pos-(tt+1)*self.default_direction
-                    for (a,b) in self.x_tracked_pair(pos0,pos1):
-                        cv2.line(frame,a,b,(100,255,200-80*tt),1)
-                    pos1=pos+tt*self.default_direction
-                    pos0=pos+(tt+1)*self.default_direction
-                    for (a,b) in self.x_tracked_pair(pos0,pos1):
-                        cv2.line(frame,a,b,(100,200-80*tt,200),1)
-                for pt in self.tracked_point[pos]:
-                    cv2.circle(frame, (pt[0], pt[1]), 1, (15, 100, 255), -1, 8, 10)
-                    cv2.circle(frame, (pt[0], pt[1]),  self.radius_of_filter, (15, 100, 255), 1)
-                for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],2*10):
-                    cv2.circle(frame,a, 1, (100, 250, 15), 2)
-                    cv2.circle(frame,b, 1, (100, 250, 15), 2)
-                for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],2*self.radius_of_filter):
-                    cv2.circle(frame,a,self.radius_of_filter,(15, 250, 100),1)
-                    cv2.circle(frame,b,self.radius_of_filter,(15, 250, 100),1)
-                    
+            modifiedframes.append(numpy.copy(frame))
         if self.flag_filter:
             pos=self.get_current_frame_position()
             if pos in self.filter_position:
-                frame=self.apply_filters(frame,self.filter_position[pos])
-
-        return [frame]
+                frame=self.apply_filters(oframe,self.filter_position[pos])
+            modifiedframes.append(numpy.copy(frame))
+        if self.flag_trackedpoint:
+            pos=self.get_current_frame_position()
+            if len(modifiedframes)>0:
+                for frame in modifiedframes:
+                    xframe=self.draw_tracked_points(numpy.copy(frame),pos)
+                    modifiedframes.append(numpy.copy(xframe))
+            xframe=self.draw_tracked_points(numpy.copy(oframe),pos)
+            modifiedframes.append(numpy.copy(xframe))
+        return modifiedframes
 
 if __name__=="__main__":
     import sys, os
