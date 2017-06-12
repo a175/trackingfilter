@@ -91,7 +91,7 @@ class VideoViewer:
             print "+","x:", xkeyeventtitle
         print ""
 
-    def showvideo(self,initialpos,xkeyevent=None, xkeyeventtitle=""):
+    def showvideo(self,initialpos,windowname,xkeyevent=None, xkeyeventtitle=""):
         """
         Open window of video.
         xkeyevent: function if x is typed.
@@ -118,7 +118,7 @@ class VideoViewer:
                     pos=self.get_current_frame_position()
                     print "frameposition:", pos
             frame = self.overlap_layer(self.frames[self.frame_variation_to_show],self.mouse_event_layer)
-            cv2.imshow('frame',frame)
+            cv2.imshow(windowname,frame)
             keyinput=cv2.waitKey(1) & 0xFF
             if keyinput == ord('q'):
                 print "Quit"
@@ -386,15 +386,8 @@ class TrackingFilter(PartcleFilter):
         self.set_templatematchingtype("apply")
         self.features=None
         self.CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)
-        self.flag_mask=False
-        self.flag_templatematch=False
-        self.flag_gray=False
-        self.flag_trackedpoint=False
-        self.flag_filter=False
-        self.flag_tracking=False
         
         self.default_direction=1
-        self.set_modify_frame(self.frame_variant)
 
     def reset_tracking_data_version(self, initpos):
         """
@@ -666,13 +659,27 @@ class TrackingFilter(PartcleFilter):
         self.tracked_previous_point[pos]=previd
         self.waited_previous_point[pos]=notfoundid
         self.tracking_data_version[pos]=self.tracking_data_current_version
-        
+
+
+
 class TrackingFilterUI(TrackingFilter):
     """
     UI of TrackingFilter
     """
     def __init__(self):
         TrackingFilter.__init__(self)
+        self.runlevel=[
+            self.input_filename,
+            self.select_grayimage,
+            self.select_background,
+            self.select_masktype,
+            self.select_template,
+            self.select_templatematchingtype,
+            self.select_filter_radius,
+            self.select_feature,
+            self.track_optical_flow_all_and_check,
+            self.check_filter
+        ]
 
     def input_filename(self):
         print "Input filenames to use."
@@ -697,46 +704,24 @@ class TrackingFilterUI(TrackingFilter):
         print ""
         return 1
 
-    def select_background(self):
-        print "Choose backgroud frames."
-        print "The last frame of w_ring is used as background."
-        print ""
-        self.flag_gray=True
-        self.flag_mask=False
-        self.flag_templatematch=False
-        self.flag_trackedpoint=False
-        self.flag_filter=False
-        self.flag_tracking=False
-        self.frame_variation_to_show=-1
-
-        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
-        flag=self.showvideo(0)
-        cv2.destroyWindow("frame")
-        if flag <= 0:
-            return flag
-        pos=self.key_w_ring[-1]
-        print ""
-        print "``` python"
-        print "tf.append_bg(",pos,")"
-        print "```"
-        print ""
-        self.append_bg(pos)
-        return flag
+    def modify_frame_to_select_grayimage(self,oframe):
+        modifiedframes=[]
+        frame=numpy.copy(oframe)
+        g=self.get_gray_image_for_template_match(frame)
+        frame[:,:,0]=g
+        frame[:,:,1]=g
+        frame[:,:,2]=g
+        modifiedframes.append(numpy.copy(frame))
+        return modifiedframes
 
     def select_grayimage(self):
         print "Choose single channel image."
         print ""
         self.set_gray_type("GRAY")
-        self.flag_mask=False
-        self.flag_templatematch=False
-        self.flag_gray=True
-        self.flag_trackedpoint=False
-        self.flag_filter=False
-        self.flag_tracking=False
         self.frame_variation_to_show=-1
-
+        self.set_modify_frame(self.modify_frame_to_select_grayimage)
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
-        flag=self.showvideo(0,
+        flag=self.showvideo(0, "frame",
                             xkeyevent=self.select_grayimage_by_key,
                             xkeyeventtitle="choose gray type")
         cv2.destroyWindow("frame")
@@ -747,6 +732,28 @@ class TrackingFilterUI(TrackingFilter):
         print "tf.set_gray_type(\"%s\")" % self.gray_type
         print "```"
         print ""
+        return flag
+
+
+    def select_background(self):
+        print "Choose backgroud frames."
+        print "The last frame of w_ring is used as background."
+        print ""
+        self.frame_variation_to_show=-1
+        self.set_modify_frame(self.modify_frame_to_select_grayimage)
+
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        flag=self.showvideo(0,"frame")
+        cv2.destroyWindow("frame")
+        if flag <= 0:
+            return flag
+        pos=self.key_w_ring[-1]
+        print ""
+        print "``` python"
+        print "tf.append_bg(",pos,")"
+        print "```"
+        print ""
+        self.append_bg(pos)
         return flag
 
     def select_grayimage_by_key(self):
@@ -788,21 +795,31 @@ class TrackingFilterUI(TrackingFilter):
         pos=self.get_current_frame_position()
         self.update_frame(pos)
 
+    def modify_frame_to_select_masktype(self,oframe):
+        modifiedframes=[]
+        frame=numpy.copy(oframe)
+        mask=self.get_mask_for_opticalflow(frame)
+        g=self.get_gray_image_for_template_match(frame)
+        frame[:,:,0]=g
+        frame[:,:,1]=g
+        frame[:,:,2]=g
+        modifiedframes.append(numpy.copy(frame))
+        g=self.apply_mask(g,mask)
+        frame[:,:,0]=g
+        frame[:,:,1]=g
+        frame[:,:,2]=g
+        modifiedframes.append(numpy.copy(frame))
+        return modifiedframes
                 
     def select_masktype(self):
         print "Choose mask type for background."
         print ""
-        self.flag_mask=True
-        self.flag_templatematch=False
-        self.flag_gray=True
-        self.flag_trackedpoint=False
-        self.flag_filter=False
-        self.flag_tracking=False
         self.frame_variation_to_show=-1
+        self.set_modify_frame(self.modify_frame_to_select_masktype)
 
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
-        flag=self.showvideo(0,
+        flag=self.showvideo(0,"frame",
                             xkeyevent=self.select_masktype_by_key,
                             xkeyeventtitle="choose mask type")
         cv2.destroyWindow("frame")
@@ -832,63 +849,19 @@ class TrackingFilterUI(TrackingFilter):
         pos=self.get_current_frame_position()
         self.update_frame(pos)
 
-    def select_templatematchingtype(self):
-        print "Choose apply template matching or not."
-        print ""
-        self.flag_mask=True
-        self.flag_templatematch=True
-        self.flag_gray=True
-        self.flag_trackedpoint=False
-        self.flag_filter=False
-        self.flag_tracking=False
-        self.frame_variation_to_show=-1
-
-
-        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
-        flag=self.showvideo(0,
-                            xkeyevent=self.select_templatematchingtype_by_key,
-                            xkeyeventtitle="choose apply template matching or not")
-        cv2.destroyWindow("frame")
-        if flag <= 0:
-            return flag
-        print ""
-        print "``` python"
-        print "tf.set_templatematchingtype(\"%s\")" % self.templatematchingtype
-        print "```"
-        print ""
-        return flag
-
-    def select_templatematchingtype_by_key(self):
-        print "++ n :Not apply"
-        print "++ a :Apply"
-        keyinput=cv2.waitKey(0) & 0xFF
-        if keyinput == ord('n'):
-            self.set_templatematchingtype("None")
-            print "Template matching: not apply"
-        elif keyinput == ord('a'):
-            self.set_templatematchingtype("apply")
-            print "Template matching: apply"
-        pos=self.get_current_frame_position()
-        self.update_frame(pos)
-
     def select_template(self):
         print "Choose template image for template matching."
         print ""
         print "+","mouse drag: append the rectangle;"
         self.event_x=None
         self.inputted_data=[]
-        self.flag_mask=False
-        self.flag_templatematch=False
-        self.flag_gray=True
-        self.flag_trackedpoint=False
-        self.flag_filter=False
-        self.flag_tracking=False
         self.default_direction=0
         self.frame_variation_to_show=-1
+        self.set_modify_frame(self.modify_frame_to_select_grayimage)
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         cv2.setMouseCallback("frame", self.select_rectangle_by_mouse)
-        flag=self.showvideo(0)
+        flag=self.showvideo(0,"frame")
         cv2.destroyWindow("frame")
         if flag <= 0:
             return flag
@@ -915,24 +888,72 @@ class TrackingFilterUI(TrackingFilter):
         print ""
         return flag
 
+    def modify_frame_to_select_templatematchingtype(self,oframe):
+        modifiedframes=[]
+        frame=numpy.copy(oframe)
+        g=self.get_gray_image_for_template_match(frame)
+        mask=self.get_mask_for_opticalflow(frame)
+        g=self.apply_mask(g,mask)
+        frame[:,:,0]=g
+        frame[:,:,1]=g
+        frame[:,:,2]=g
+        modifiedframes.append(numpy.copy(frame))
+
+        frame=numpy.copy(oframe)
+        g=self.get_gray_image_for_optical_flow(frame)
+        frame[:,:,0]=g
+        frame[:,:,1]=g
+        frame[:,:,2]=g
+        modifiedframes.append(numpy.copy(frame))
+
+        return modifiedframes
+
+    def select_templatematchingtype(self):
+        print "Choose apply template matching or not."
+        print ""
+        self.frame_variation_to_show=-1
+        self.set_modify_frame(self.modify_frame_to_select_templatematchingtype)
+
+
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        flag=self.showvideo(0,"frame",
+                            xkeyevent=self.select_templatematchingtype_by_key,
+                            xkeyeventtitle="choose apply template matching or not")
+        cv2.destroyWindow("frame")
+        if flag <= 0:
+            return flag
+        print ""
+        print "``` python"
+        print "tf.set_templatematchingtype(\"%s\")" % self.templatematchingtype
+        print "```"
+        print ""
+        return flag
+
+    def select_templatematchingtype_by_key(self):
+        print "++ n :Not apply"
+        print "++ a :Apply"
+        keyinput=cv2.waitKey(0) & 0xFF
+        if keyinput == ord('n'):
+            self.set_templatematchingtype("None")
+            print "Template matching: not apply"
+        elif keyinput == ord('a'):
+            self.set_templatematchingtype("apply")
+            print "Template matching: apply"
+        pos=self.get_current_frame_position()
+        self.update_frame(pos)
+
     def select_filter_radius(self):
         print "Choose radius of filter."
         print ""
         print "+","mouse drag: append the circle;"
         self.event_x=None
         self.inputted_data=[]
-        self.flag_mask=False
-        self.flag_templatematch=False
-        self.flag_gray=False
-        self.flag_trackedpoint=False
-        self.flag_filter=False
-        self.flag_tracking=False
         self.frame_variation_to_show=-1
-
+        self.set_modify_frame(self.modify_frame_to_select_grayimage)
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         cv2.setMouseCallback("frame", self.select_circle_by_mouse)
-        flag=self.showvideo(0)
+        flag=self.showvideo(0,"frame")
         cv2.destroyWindow("frame")
         if flag <= 0:
             return flag
@@ -948,6 +969,17 @@ class TrackingFilterUI(TrackingFilter):
         print "```"
         print ""
         return flag
+
+    def modify_frame_to_select_feature(self,oframe):
+        modifiedframes=[]
+        frame=numpy.copy(oframe)
+        g=self.get_gray_image_for_optical_flow(frame)
+        frame[:,:,0]=g
+        frame[:,:,1]=g
+        frame[:,:,2]=g
+        modifiedframes.append(numpy.copy(frame))
+
+        return modifiedframes
     
     def select_feature(self):
         print "Choose target unit."
@@ -955,18 +987,12 @@ class TrackingFilterUI(TrackingFilter):
         print "+","mouse click: select the particle;"
         self.event_x=None
         self.inputted_data=[]
-        self.flag_mask=True
-        self.flag_templatematch=True
-        self.flag_gray=True
-        self.flag_trackedpoint=False
-        self.flag_filter=False
-        self.flag_tracking=False
         self.frame_variation_to_show=-1
-
+        self.set_modify_frame(self.modify_frame_to_select_feature)
 
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
         cv2.setMouseCallback("frame", self.select_point_by_mouse)        
-        flag=self.showvideo(0)
+        flag=self.showvideo(0,"frame")
         cv2.destroyWindow("frame")
         if flag <= 0:
             return flag
@@ -981,16 +1007,34 @@ class TrackingFilterUI(TrackingFilter):
         print ""
         return flag
 
+    def modify_frame_to_track_optical_flow_all_and_check(self,oframe):
+        modifiedframes=[]
+        self.update_trackingpoint_if_needed(oframe)
+        self.original_frame=numpy.copy(oframe)
+        pos=self.get_current_frame_position()
+        
+        frame=numpy.copy(oframe)
+        g=self.get_gray_image_for_optical_flow(frame)
+        frame[:,:,0]=g
+        frame[:,:,1]=g
+        frame[:,:,2]=g
+        frame=self.draw_tracked_pairs(frame,pos)
+        frame=self.draw_tracked_points(frame,pos)
+        modifiedframes.append(numpy.copy(frame))
+
+        frame=numpy.copy(oframe)
+        frame=self.draw_tracked_pairs(frame,pos)
+        frame=self.draw_tracked_points(frame,pos)
+        modifiedframes.append(numpy.copy(frame))
+        return modifiedframes
+
     def track_optical_flow_all_and_check(self):
         print "Track points."
         print ""
         flag=-1
-        self.flag_mask=False
-        self.flag_templatematch=False
-        self.flag_gray=False
-        self.flag_trackedpoint=True
-        self.flag_filter=False
-        self.flag_tracking=True
+        self.frame_variation_to_show=-1
+        self.set_modify_frame(self.modify_frame_to_track_optical_flow_all_and_check)
+
         trackedpoints={}
         for initpos in self.original_features:
             print "Track points from the frame",initpos ,"to the final frame."
@@ -1003,7 +1047,7 @@ class TrackingFilterUI(TrackingFilter):
             self.set_default_direction(1)
             cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
             cv2.setMouseCallback("frame", self.edit_tracked_points_by_mouse)
-            flag=self.showvideo(initpos)
+            flag=self.showvideo(initpos,"frame")
             cv2.destroyWindow("frame")
             if flag <= 0:
                 return flag
@@ -1016,7 +1060,7 @@ class TrackingFilterUI(TrackingFilter):
             self.set_default_direction(-1)
             cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
             cv2.setMouseCallback("frame", self.edit_tracked_points_by_mouse)
-            flag=self.showvideo(initpos)
+            flag=self.showvideo(initpos,"frame")
             cv2.destroyWindow("frame")
             if flag <= 0:
                 return flag
@@ -1041,14 +1085,24 @@ class TrackingFilterUI(TrackingFilter):
         print ""
         return flag
 
+    def modify_frame_to_check_filter(self,oframe):
+        modifiedframes=[]
+        frame=numpy.copy(oframe)
+        pos=self.get_current_frame_position()
+        if pos in self.filter_position:
+            frame=self.apply_filters(oframe,self.filter_position[pos])
+        modifiedframes.append(numpy.copy(frame))
+
+        frame=self.draw_filter_position(frame,pos)
+        modifiedframes.append(numpy.copy(frame))
+        return modifiedframes
+
     def check_filter(self):
-        self.flag_mask=False
-        self.flag_templatematch=False
-        self.flag_gray=False
-        self.flag_trackedpoint=False
-        self.flag_filter=True
+        self.frame_variation_to_show=-1
+        self.set_modify_frame(self.modify_frame_to_check_filter)
+
         cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
-        flag=self.showvideo(0)
+        flag=self.showvideo(0,"frame")
         cv2.destroyWindow("frame")
         if flag <= 0:
             return flag
@@ -1064,7 +1118,7 @@ class TrackingFilterUI(TrackingFilter):
 
     def run(self,initstep=0):
         """
-        This function runs functions in the list "runlevel",
+        This function runs functions in the list self.runlevel,
         which is local variable.
         If the function returns positive,
         then runs next function.
@@ -1073,23 +1127,11 @@ class TrackingFilterUI(TrackingFilter):
         If the function returns zero,
         then exit.        
         """
-        runlevel=[
-            self.input_filename,
-            self.select_grayimage,
-            self.select_background,
-            self.select_masktype,
-            self.select_template,
-            self.select_templatematchingtype,
-            self.select_filter_radius,
-            self.select_feature,
-            self.track_optical_flow_all_and_check,
-            self.check_filter
-        ]
         currentstep=initstep
-        while 0 <= currentstep and currentstep < len(runlevel):
+        while 0 <= currentstep and currentstep < len(self.runlevel):
             print "Section", currentstep
             print "==========="
-            flag=runlevel[currentstep]()
+            flag=self.runlevel[currentstep]()
             if flag>0:
                 currentstep=currentstep+1
             elif flag<0:
@@ -1167,9 +1209,9 @@ class TrackingFilterUI(TrackingFilter):
                 if d < r:
                     yield ((pti[0],pti[1]),(ptj[0],ptj[1]))
                     
-    def draw_tracked_points(self,frame,pos):
+    def draw_tracked_pairs(self,frame,pos):
         """
-        Draw tracked point in pos to frame.
+        Draw lines between pair of racked points in pos to frame.
         """
         if pos in self.tracked_point:
             for tt in range(3):
@@ -1181,6 +1223,13 @@ class TrackingFilterUI(TrackingFilter):
                 pos0=pos+(tt+1)*self.default_direction
                 for (a,b) in self.x_tracked_pair(pos0,pos1):
                     cv2.line(frame,a,b,(100,200-80*tt,200),1)
+        return frame
+
+    def draw_tracked_points(self,frame,pos):
+        """
+        Draw circle at points in pos to frame.
+        """
+        if pos in self.tracked_point:
             for pt in self.tracked_point[pos]:
                 cv2.circle(frame, (pt[0], pt[1]), 1, (15, 100, 255), -1, 8, 10)
                 cv2.circle(frame, (pt[0], pt[1]),  self.radius_of_filter, (15, 100, 255), 1)
@@ -1191,38 +1240,17 @@ class TrackingFilterUI(TrackingFilter):
                 cv2.circle(frame,a,self.radius_of_filter,(15, 250, 100),1)
                 cv2.circle(frame,b,self.radius_of_filter,(15, 250, 100),1)
         return frame
-    
-    def frame_variant(self,oframe):
-        modifiedframes=[]
-        if self.flag_tracking:
-            self.update_trackingpoint_if_needed(oframe)
-        self.original_frame=numpy.copy(oframe)
-        frame=numpy.copy(oframe)
-        if self.flag_gray:
-            g=self.get_gray_image_for_template_match(frame)
-            if self.flag_templatematch:
-                g=self.apply_template_match(g)
-            if self.flag_mask:
-                mask=self.get_mask_for_opticalflow(frame)
-                g=self.apply_mask(g,mask)
-            frame[:,:,0]=g
-            frame[:,:,1]=g
-            frame[:,:,2]=g
-            modifiedframes.append(numpy.copy(frame))
-        if self.flag_filter:
-            pos=self.get_current_frame_position()
-            if pos in self.filter_position:
-                frame=self.apply_filters(oframe,self.filter_position[pos])
-            modifiedframes.append(numpy.copy(frame))
-        if self.flag_trackedpoint:
-            pos=self.get_current_frame_position()
-            if len(modifiedframes)>0:
-                for frame in modifiedframes:
-                    xframe=self.draw_tracked_points(numpy.copy(frame),pos)
-                    modifiedframes.append(numpy.copy(xframe))
-            xframe=self.draw_tracked_points(numpy.copy(oframe),pos)
-            modifiedframes.append(numpy.copy(xframe))
-        return modifiedframes
+
+    def draw_filter_position(self,frame,pos):
+        """
+        Draw circle at points in pos to frame.
+        """
+        if pos in self.filter_position:
+            for (x,y,r) in self.filter_position[pos]:
+                cv2.circle(frame, (x,y), 1, (15, 100, 255), -1, 8, 10)
+                cv2.circle(frame, (x,y), r, (15, 100, 255), 1)
+        return frame
+
 
 if __name__=="__main__":
     import sys, os
