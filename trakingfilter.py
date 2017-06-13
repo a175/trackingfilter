@@ -1147,6 +1147,11 @@ class TrackingFilterUI(TrackingFilter):
         print "save_modified_video()"
         print "```"
         print ""
+        print "If you have the ffmpeg, then you may run ffmpeg to convert."
+        print "``` shell"
+        print "# ffmpeg -i",self.outfile, "-f mp4 -vcodec h264 -qscale 20 -acodec aac -ab 128", self.outfile+".mp4"
+        print "```"
+        print ""
         return flag
 
     def run(self,initstep=0):
