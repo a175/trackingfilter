@@ -405,6 +405,9 @@ class TrackingFilter(PartcleFilter):
         self.waited_previous_point={}
         self.waited_previous_point[initpos]=[]
 
+    def reset_traced_particle(self):
+        self.traced_particle=traced_particle()
+    
     def set_default_direction(self,direction):
         self.default_direction=direction
 
@@ -691,8 +694,9 @@ class TrackingFilterUI(TrackingFilter):
             self.select_template,
             self.select_templatematchingtype,
             self.select_filter_radius,
-            self.select_feature,
-            self.track_optical_flow_all_and_check,
+            self.select_and_trace_particle,
+#            self.select_feature,
+#            self.track_optical_flow_all_and_check,
             self.check_filter
         ]
 
@@ -1022,6 +1026,139 @@ class TrackingFilterUI(TrackingFilter):
         print ""
         return flag
 
+    def modify_frame_to_select_and_trace_particle(self,oframe):
+        modifiedframes=[]
+        #self.update_trackingpoint_if_needed(oframe)
+        self.original_frame=numpy.copy(oframe)
+        pos=self.get_current_frame_position()
+        
+        frame=numpy.copy(oframe)
+        g=self.get_gray_image_for_optical_flow(frame)
+        frame[:,:,0]=g
+        frame[:,:,1]=g
+        frame[:,:,2]=g        
+        #frame=self.draw_tracked_pairs_n(frame,pos)
+        #frame=self.draw_tracked_points(frame,pos)
+        modifiedframes.append(numpy.copy(frame))
+        #frame=self.draw_tracked_pairs_p(frame,pos)
+        #frame=self.draw_tracked_points(frame,pos)
+        modifiedframes.append(numpy.copy(frame))
+
+        frame=numpy.copy(oframe)
+        #frame=self.draw_tracked_pairs_n(frame,pos)
+        #frame=self.draw_tracked_points(frame,pos)
+        modifiedframes.append(numpy.copy(frame))
+        frame=self.draw_traced_particle(frame,pos)
+        #frame=self.draw_tracked_points(frame,pos)
+        modifiedframes.append(numpy.copy(frame))
+        return modifiedframes
+
+    def draw_traced_particle(self,frame,pos):
+        """
+        Draw circle at points in pos to frame.
+        """
+        for (i,(pt,sh)) in enumerate(self.traced_particle.x_particles(pos)):
+            if sh is None:
+                cv2.line(frame,(pt[0]-5, pt[1]-5),(pt[0]+5, pt[1]+5),(15, 100, 255),1)
+                cv2.line(frame,(pt[0]-5, pt[1]+5),(pt[0]+5, pt[1]-5),(15, 100, 255),1)
+            else:
+                cv2.circle(frame,pt, 1, (15, 100, 255), -1, 8, 10)
+                cv2.circle(frame,pt,sh, (15, 100, 255), 1)
+                if not self.traced_particle.get_close_particle(pos,pt[0],pt[1],5,exceptid=[i]) is None:
+#            for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],2*self.radius_of_filter):
+                    cv2.circle(frame,pt,self.radius_of_filter,(15, 250, 100),1)
+        return frame
+
+    def select_and_trace_particle(self):
+        print "Select particles and trace them."
+        print ""
+        flag=-1
+        self.frame_variation_to_show=-1
+        self.set_modify_frame(self.modify_frame_to_select_and_trace_particle)
+        self.reset_traced_particle()
+        print "+","mouse drag: move/remove/append particle (If particle is moved to the left top corner of window, then it will be removed.);"
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
+        cv2.setMouseCallback("frame", self.edit_traced_particle_by_mouse)
+        flag=self.showvideo(0,"frame")
+        cv2.destroyWindow("frame")
+        if flag <= 0:
+            return flag
+        
+        self.reset_filter_position()
+        print ""
+        print "``` python"
+        print "tf.reset_filter_position()"
+        print "ff=",ff
+        print "for (x,y) in ff:"
+        print "    tf.append_filter_position(",pos,",x,y,",self.radius_of_filter,")"
+        print ""
+        print "```"
+        print ""
+        return flag
+        pass
+
+    def edit_traced_particle_by_mouse(self,event, x, y, flags, param):
+        """
+        Select particle to add or remove.
+        This is used as mouse event callback.
+        """
+        
+        if event == cv2.EVENT_LBUTTONUP:
+#            self.direction=self.mouse_event_note["direction"]
+            self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
+            (dx,dy)=self.mouse_event_note["difference"]
+            (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
+            (idnum,pos)=self.mouse_event_note["original"]
+            (xi,yi)=self.traced_particle.get_point(idnum,pos)
+            self.mouse_event_note={}
+            if x+y<self.radius_of_filter:
+                pt=(xi,yi)
+                print "remove",idnum,pt,"."
+                self.traced_particle.set_particle(idnum,pos,pt,None)
+            else:
+                pt=(x+dx,y+dy)
+                if idnum<0:
+                    print "add at", pt, "."
+                else:
+                    print "move",idnum,"to", pt, "."
+                self.traced_particle.set_particle(idnum,pos,pt,self.radius_of_filter)
+            self.update_frame(pos)
+            
+        elif event == cv2.EVENT_LBUTTONDOWN:
+            self.direction=0
+            pos=self.get_current_frame_position()
+            idnum=self.traced_particle.get_close_particle(pos,x,y,self.radius_of_filter)
+            if idnum is None:
+                self.traced_particle.append_new_sequence_of_particle(pos,(x,y),self.radius_of_filter)
+                idnum=-1
+                xi=x
+                yi=y
+            else:
+                (xi,yi)=self.traced_particle.get_point(idnum,pos)
+            dx=xi-x
+            dy=yi-y
+            self.mouse_event_note["LBUTTONDOWN"]=(x,y)
+            self.mouse_event_note["original"]=(idnum,pos)
+            self.mouse_event_note["difference"]=(dx,dy)
+            self.mouse_event_note["direction"]=self.direction
+            self.mouse_event_note["frame"]=numpy.copy(self.mouse_event_layer)
+            cv2.rectangle(self.mouse_event_layer, (xi-1, yi-1), (xi+1,yi+1), (255,0, 255,1), 1)
+            cv2.circle(self.mouse_event_layer, (x+dx,y+dy), int(self.radius_of_filter), (0, 0, 255,1), 1)
+            cv2.line(self.mouse_event_layer,(int(self.radius_of_filter),0),(0,int(self.radius_of_filter)),(0, 0, 255,1),1)
+        elif  event == cv2.EVENT_MOUSEMOVE:
+            if not "LBUTTONDOWN" in self.mouse_event_note:
+                return
+            self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
+            if "original" in self.mouse_event_note:
+                (idnum,pos)=self.mouse_event_note["original"]
+                (xi,yi)=self.traced_particle.get_point(idnum,pos)
+                cv2.rectangle(self.mouse_event_layer, (xi-1, yi-1), (xi+1,yi+1), (255,0, 255,1), 1) 
+            if "difference" in self.mouse_event_note:
+                (dx,dy)=self.mouse_event_note["difference"]
+                cv2.circle(self.mouse_event_layer, (x+dx,y+dy), 1, (0, 0, 255,1), -1, 8, 10)
+                cv2.circle(self.mouse_event_layer, (x+dx,y+dy), int(self.radius_of_filter), (0, 0, 255,1), 1)
+            cv2.line(self.mouse_event_layer,(int(self.radius_of_filter),0),(0,int(self.radius_of_filter)),(0, 0, 255,1),1)
+            
     def modify_frame_to_track_optical_flow_all_and_check(self,oframe):
         modifiedframes=[]
         self.update_trackingpoint_if_needed(oframe)
@@ -1329,7 +1466,46 @@ class TrackingFilterUI(TrackingFilter):
                 cv2.circle(frame, (x,y), r, (15, 100, 255), 1)
         return frame
 
+class traced_particle:
+    def __init__(self):
+        self.points=[]
+        self.shape=[]
+        self.version=[]
+        self.initial_pos=[]
+        self.current_version=0
+        
+    def append_new_sequence_of_particle(self,pos,pt,sh):
+        self.points.append({})
+        self.shape.append({})
+        self.version.append({})
+        self.initial_pos.append(pos)
+        self.set_particle(-1, pos, pt, sh)
+        
+    def set_particle(self, idnum, pos, pt, sh):
+        self.current_version=self.current_version+1
+        self.points[idnum][pos]=pt
+        self.shape[idnum][pos]=sh
+        self.version[idnum][pos]=self.current_version
 
+    def get_point(self, idnum, pos):
+        if not pos in self.points[idnum]:
+            return None
+        return self.points[idnum][pos]
+
+    def x_particles(self,pos):
+        for (pt,sh) in zip(self.points,self.shape):
+            if pos in pt:
+                yield (pt[pos],sh[pos])
+        
+    def get_close_particle(self, pos, x, y, r,exceptid=[]):
+        for (i,pt) in enumerate(self.points):
+            if not pos in pt:
+                continue
+            if (pt[pos][0]-x)**2+(pt[pos][1]-y)**2<r**2:
+                if not i in exceptid:
+                    return i
+        return None
+    
 if __name__=="__main__":
     import sys, os
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
