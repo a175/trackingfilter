@@ -12,6 +12,10 @@ class VideoViewer:
         self.frame_variation_to_show=-1
         self.frames=[]
         self.modify_frame=modify_frame
+
+        self.COLOR_MOUSE_EVENT_SELECTED =(  0,255,255,1)
+        self.COLOR_MOUSE_EVENT_SELECTING=(  0,  0,255,1)
+        self.COLOR_MOUSE_EVENT_SELECT   =(255,  0,255,1)
         
     def set_original(self,video):
         """
@@ -202,8 +206,8 @@ class VideoViewer:
             pos=self.get_current_frame_position()
             self.inputted_data.append((pos,xp,x,yp,y))
             radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
-            cv2.circle(self.mouse_event_layer, (xp, yp), 1, (0, 255, 255,1), -1, 8, 10)
-            cv2.circle(self.mouse_event_layer, (xp,yp), int(radius), (0, 255, 255,1), 1)
+            cv2.circle(self.mouse_event_layer, (xp, yp), 1,self.COLOR_MOUSE_EVENT_SELECTED, -1, 8, 10)
+            cv2.circle(self.mouse_event_layer, (xp,yp), int(radius),self.COLOR_MOUSE_EVENT_SELECTED, 1)
             print "circle: ", ((xp, yp), (x,y))
         elif event == cv2.EVENT_LBUTTONDOWN:
             self.mouse_event_note["LBUTTONDOWN"]=(x,y)
@@ -216,9 +220,9 @@ class VideoViewer:
                 (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
                 self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
                 radius=numpy.sqrt((xp-x)**2 + (yp-y)**2)
-                cv2.circle(self.mouse_event_layer, (xp,yp), 1, (0, 0, 255,1), -1, 8, 10)
-                cv2.circle(self.mouse_event_layer, (xp,yp), int(radius), (0, 0, 255,1), 1)
-
+                cv2.circle(self.mouse_event_layer, (xp,yp), 1,self.COLOR_MOUSE_EVENT_SELECTING, -1, 8, 10)
+                cv2.circle(self.mouse_event_layer, (xp,yp), int(radius),self.COLOR_MOUSE_EVENT_SELECTING, 1)
+                
     def select_rectangle_by_mouse(self,event, x, y, flags, param):
         """
         Select rectangle and append to self.inputted_data.
@@ -231,7 +235,7 @@ class VideoViewer:
             self.mouse_event_note={}
             pos=self.get_current_frame_position()
             self.inputted_data.append((pos,xp,x,yp,y))
-            cv2.rectangle(self.mouse_event_layer, (xp, yp), (x,y), (0, 255, 255,1), 1)
+            cv2.rectangle(self.mouse_event_layer, (xp, yp), (x,y),self.COLOR_MOUSE_EVENT_SELECTED, 1)
             print "rectangle: ", ((xp, yp), (x,y))            
         elif event == cv2.EVENT_LBUTTONDOWN:
             self.mouse_event_note["LBUTTONDOWN"]=(x,y)
@@ -242,7 +246,7 @@ class VideoViewer:
             if "LBUTTONDOWN" in self.mouse_event_note:
                 (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
                 self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
-                cv2.rectangle(self.mouse_event_layer, (xp, yp), (x,y), (0, 0, 255,1), 1)
+                cv2.rectangle(self.mouse_event_layer, (xp, yp), (x,y),self.COLOR_MOUSE_EVENT_SELECTING, 1)
 
 
     def select_point_by_mouse(self,event, x, y, flags, param):
@@ -255,14 +259,14 @@ class VideoViewer:
             self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
             self.mouse_event_note={}
-            cv2.rectangle(self.mouse_event_layer, (xp-1, yp-1), (xp+1,yp+1),(15, 100, 255,1), 2)
+            cv2.rectangle(self.mouse_event_layer, (xp-1, yp-1), (xp+1,yp+1),self.COLOR_MOUSE_EVENT_SELECTED, 2)
             
         elif event == cv2.EVENT_LBUTTONDOWN:
             self.mouse_event_note["LBUTTONDOWN"]=(x,y)
             self.mouse_event_note["direction"]=self.direction
             self.mouse_event_note["frame"]=numpy.copy(self.mouse_event_layer)
             self.mouse_event_layer=numpy.copy(self.mouse_event_layer)
-            cv2.rectangle(self.mouse_event_layer, (x-1, y-1), (x+1,y+1), (255,0, 255,1), 1)
+            cv2.rectangle(self.mouse_event_layer, (x-1, y-1), (x+1,y+1), self.COLOR_MOUSE_EVENT_SELECT, 1)
             self.direction=0
             print "point: ", (x,y)
             pos=self.get_current_frame_position()
@@ -591,6 +595,15 @@ class TrackingFilterUI(TrackingFilter):
             self.check_filter
         ]
         self.frame_prev=None
+        
+        self.COLOR_PARTICLE_BOUNDARY     =(15, 100, 200)
+        self.COLOR_PARTICLE_BOUNDARY_EMPH=(15, 250, 100)
+
+    def get_gradation_color_a(self,num,tot):
+        return (20+(200//tot)*num,220-(200//tot)*num,70)
+    
+    def get_gradation_color_b(self,num,tot):
+        return (20+(200//tot)*num,70,220-(200//tot)*num)
 
     def input_filename(self):
         print "Input filenames to use."
@@ -906,6 +919,7 @@ class TrackingFilterUI(TrackingFilter):
         modifiedframes.append(numpy.copy(frame))
         return modifiedframes
 
+        
     def draw_tracing_lines(self,frame,pos):
         """
         Draw lines between pair of racked points in pos to frame.
@@ -919,7 +933,7 @@ class TrackingFilterUI(TrackingFilter):
                     pt1=self.traced_particle.get_point_int(i,pos-(tt+1))
                     if pt1 is None:
                         continue
-                    cv2.line(frame,pt0,pt1,(200-40*tt,200-40*tt,200),1)
+                    cv2.line(frame,pt0,pt1,self.get_gradation_color_a(tt,5),1)
                     pt0=pt1
             pt0=self.traced_particle.get_point_int(i,pos)
             if pos<pos_0:
@@ -927,7 +941,7 @@ class TrackingFilterUI(TrackingFilter):
                     pt1=self.traced_particle.get_point_int(i,pos+(tt+1))
                     if pt1 is None:
                         continue
-                    cv2.line(frame,pt0,pt1,(100,255,200-40*tt),1)
+                    cv2.line(frame,pt0,pt1,self.get_gradation_color_b(tt,5),1)
                     pt0=pt1
         return frame
 
@@ -938,14 +952,14 @@ class TrackingFilterUI(TrackingFilter):
         """
         for (i,pt,sh) in self.traced_particle.x_particles(pos):
             if sh is None:
-                cv2.line(frame,(pt[0]-5, pt[1]-5),(pt[0]+5, pt[1]+5),(15, 100, 255),1)
-                cv2.line(frame,(pt[0]-5, pt[1]+5),(pt[0]+5, pt[1]-5),(15, 100, 255),1)
+                cv2.line(frame,(pt[0]-5, pt[1]-5),(pt[0]+5, pt[1]+5),self.COLOR_PARTICLE_BOUNDARY,1)
+                cv2.line(frame,(pt[0]-5, pt[1]+5),(pt[0]+5, pt[1]-5),self.COLOR_PARTICLE_BOUNDARY,1)
             else:
-                cv2.circle(frame,pt, 1, (15, 100, 255), -1, 8, 10)
-                cv2.circle(frame,pt,sh, (15, 100, 255), 1)
+                cv2.circle(frame,pt, 1,self.COLOR_PARTICLE_BOUNDARY, -1, 8, 10)
+                cv2.circle(frame,pt,sh,self.COLOR_PARTICLE_BOUNDARY, 1)
                 if not self.traced_particle.get_close_particle(pos,pt[0],pt[1],5,exceptid=[i]) is None:
 #            for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],2*self.radius_of_filter):
-                    cv2.circle(frame,pt,self.radius_of_filter,(15, 250, 100),1)
+                    cv2.circle(frame,pt,self.radius_of_filter,self.COLOR_PARTICLE_BOUNDARY_EMPH,1)
         return frame
 
     def select_and_trace_particle(self):
@@ -1025,9 +1039,9 @@ class TrackingFilterUI(TrackingFilter):
             self.mouse_event_note["difference"]=(dx,dy)
             self.mouse_event_note["direction"]=self.direction
             self.mouse_event_note["frame"]=numpy.copy(self.mouse_event_layer)
-            cv2.rectangle(self.mouse_event_layer, (xi-1, yi-1), (xi+1,yi+1), (255,0, 255,1), 1)
-            cv2.circle(self.mouse_event_layer, (x+dx,y+dy), int(self.radius_of_filter), (0, 0, 255,1), 1)
-            cv2.line(self.mouse_event_layer,(int(self.radius_of_filter),0),(0,int(self.radius_of_filter)),(0, 0, 255,1),1)
+            cv2.rectangle(self.mouse_event_layer, (xi-1, yi-1), (xi+1,yi+1),self.COLOR_MOUSE_EVENT_SELECT, 1)
+            cv2.circle(self.mouse_event_layer, (x+dx,y+dy), int(self.radius_of_filter),self.COLOR_MOUSE_EVENT_SELECT, 1)
+            cv2.line(self.mouse_event_layer,(int(self.radius_of_filter),0),(0,int(self.radius_of_filter)),self.COLOR_MOUSE_EVENT_SELECT,1)
         elif  event == cv2.EVENT_MOUSEMOVE:
             if not "LBUTTONDOWN" in self.mouse_event_note:
                 return
@@ -1035,12 +1049,13 @@ class TrackingFilterUI(TrackingFilter):
             if "original" in self.mouse_event_note:
                 (idnum,pos)=self.mouse_event_note["original"]
                 (xi,yi)=self.traced_particle.get_point_int(idnum,pos)
-                cv2.rectangle(self.mouse_event_layer, (xi-1, yi-1), (xi+1,yi+1), (255,0, 255,1), 1) 
+                cv2.rectangle(self.mouse_event_layer, (xi-1, yi-1), (xi+1,yi+1),self.COLOR_MOUSE_EVENT_SELECT, 1)
+                cv2.circle(self.mouse_event_layer, (xi,yi), int(self.radius_of_filter),self.COLOR_MOUSE_EVENT_SELECT, 1)
             if "difference" in self.mouse_event_note:
                 (dx,dy)=self.mouse_event_note["difference"]
-                cv2.circle(self.mouse_event_layer, (x+dx,y+dy), 1, (0, 0, 255,1), -1, 8, 10)
-                cv2.circle(self.mouse_event_layer, (x+dx,y+dy), int(self.radius_of_filter), (0, 0, 255,1), 1)
-            cv2.line(self.mouse_event_layer,(int(self.radius_of_filter),0),(0,int(self.radius_of_filter)),(0, 0, 255,1),1)
+                cv2.circle(self.mouse_event_layer, (x+dx,y+dy), 1,self.COLOR_MOUSE_EVENT_SELECTING, -1, 8, 10)
+                cv2.circle(self.mouse_event_layer, (x+dx,y+dy), int(self.radius_of_filter),self.COLOR_MOUSE_EVENT_SELECTING, 1)
+            cv2.line(self.mouse_event_layer,(int(self.radius_of_filter),0),(0,int(self.radius_of_filter)),self.COLOR_MOUSE_EVENT_SELECT,1)
             
 
     def modify_frame_to_check_filter(self,oframe):
@@ -1138,19 +1153,19 @@ class TrackingFilterUI(TrackingFilter):
             self.mouse_event_note={}
             (pt,r,f)=self.add_or_remove_from_filterposition(pos,xp,yp,4)
             if f>0:
-                print "add", x,y, "." 
-                cv2.circle(self.mouse_event_layer, pt, 1, (15, 100, 255,1), -1, 8, 10)
-                cv2.circle(self.mouse_event_layer, pt, self.radius_of_filter, (15, 100, 255,1), 1)
+                print "add", x,y, "."
+                cv2.circle(self.mouse_event_layer, pt, 1,self.COLOR_MOUSE_EVENT_SELECTED, -1, 8, 10)
+                cv2.circle(self.mouse_event_layer, pt, self.radius_of_filter,self.COLOR_MOUSE_EVENT_SELECTED, 1)
             else:
                 print "remove", x,y, ".", pt
-                cv2.circle(self.mouse_event_layer, pt, 1, (200, 100, 0,1), -1, 8, 10)
-                cv2.circle(self.mouse_event_layer, pt,  self.radius_of_filter, (200, 100, 0,1), 1)
+                cv2.circle(self.mouse_event_layer, pt, 1,self.COLOR_MOUSE_EVENT_SELECTED, -1, 8, 10)
+                cv2.circle(self.mouse_event_layer, pt,  self.radius_of_filter,self.COLOR_MOUSE_EVENT_SELECTED, 1)
             
         elif event == cv2.EVENT_LBUTTONDOWN:
             self.mouse_event_note["LBUTTONDOWN"]=(x,y)
             self.mouse_event_note["direction"]=self.direction
             self.mouse_event_note["frame"]=numpy.copy(self.mouse_event_layer)
-            cv2.rectangle(self.mouse_event_layer, (x-1, y-1), (x+1,y+1), (255,0, 255,1), 1)
+            cv2.rectangle(self.mouse_event_layer, (x-1, y-1), (x+1,y+1),self.COLOR_MOUSE_EVENT_SELECT, 1)
             self.direction=0
             print "point: ", (x,y)
             self.inputted_data.append((pos,x,y))
@@ -1161,8 +1176,8 @@ class TrackingFilterUI(TrackingFilter):
         """
         if pos in self.filter_position:
             for (x,y,r) in self.filter_position[pos]:
-                cv2.circle(frame, (x,y), 1, (15, 100, 255), -1, 8, 10)
-                cv2.circle(frame, (x,y), r, (15, 100, 255), 1)
+                cv2.circle(frame, (x,y), 1,self.COLOR_PARTICLE_BOUNDARY, -1, 8, 10)
+                cv2.circle(frame, (x,y), r,self.COLOR_PARTICLE_BOUNDARY, 1)
         return frame
 
 class traced_particle:
