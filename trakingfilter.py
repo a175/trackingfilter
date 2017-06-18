@@ -28,6 +28,9 @@ class VideoViewer:
         self.mouse_event_layer=numpy.zeros((h,w,4))
 
     def get_current_frame_position(self):
+        """
+        Returns position of self.frame.
+        """
         return self.original.get(cv2.cv.CV_CAP_PROP_POS_FRAMES)-1
 
     def set_modify_frame(self,modify_frame):
@@ -255,7 +258,6 @@ class VideoViewer:
         This is used as mouse event callback.
         """
         if event == cv2.EVENT_LBUTTONUP:
-#            self.direction=self.mouse_event_note["direction"]
             self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
             self.mouse_event_note={}
@@ -958,7 +960,6 @@ class TrackingFilterUI(TrackingFilter):
                 cv2.circle(frame,pt, 1,self.COLOR_PARTICLE_BOUNDARY, -1, 8, 10)
                 cv2.circle(frame,pt,sh,self.COLOR_PARTICLE_BOUNDARY, 1)
                 if not self.traced_particle.get_close_particle(pos,pt[0],pt[1],5,exceptid=[i]) is None:
-#            for (a,b) in self.x_pair_of_close_point(self.tracked_point[pos],2*self.radius_of_filter):
                     cv2.circle(frame,pt,self.radius_of_filter,self.COLOR_PARTICLE_BOUNDARY_EMPH,1)
         return frame
 
@@ -1001,7 +1002,6 @@ class TrackingFilterUI(TrackingFilter):
         """
         
         if event == cv2.EVENT_LBUTTONUP:
-#            self.direction=self.mouse_event_note["direction"]
             self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
             (dx,dy)=self.mouse_event_note["difference"]
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
@@ -1147,7 +1147,6 @@ class TrackingFilterUI(TrackingFilter):
         """
         pos=self.get_current_frame_position()
         if event == cv2.EVENT_LBUTTONUP:
-#            self.direction=self.mouse_event_note["direction"]
             self.mouse_event_layer=numpy.copy(self.mouse_event_note["frame"])
             (xp,yp)=self.mouse_event_note["LBUTTONDOWN"]
             self.mouse_event_note={}
