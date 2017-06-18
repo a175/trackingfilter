@@ -677,8 +677,33 @@ class TrackingFilter(PartcleFilter):
         self.tracked_previous_point[pos]=previd
         self.waited_previous_point[pos]=notfoundid
         self.tracking_data_version[pos]=self.tracking_data_current_version
+        
+    def update_traced_particle_if_needed(self,frame_p,frame_c,pos_pre,pos_cur):
+        """
+        If version is old then calculate optical flow.
+        """
+        pos=self.get_current_frame_position()
+        idnum=[]
+        pt_prev=[]
+        for (i,pti) in self.traced_particle.x_particles_to_update(pos_pre,pos_cur):
+            pt_prev.append(pti)
+            idnum.append(i)
+        if pt_prev != []:
+            pt_cur=self.calc_optical_flow_between_frames(frame_p,frame_c,pt_prev)
+            for (idi,pti) in zip(idnum,pt_cur):
+                self.traced_particle.update_particle(idi,pos_pre,pos_cur,pti)
+        self.traced_particle.cleanup_particle(pos_pre,pos_cur)
 
-
+    def calc_optical_flow_between_frames(self,frame_p,frame_c,pts):
+        """
+        Calculate optical flows.
+        """
+        gray_c = self.get_gray_image_for_optical_flow(frame_c)
+        gray_p = self.get_gray_image_for_optical_flow(frame_p)
+        (features,status,err)=cv2.calcOpticalFlowPyrLK(gray_p,gray_c,numpy.array(pts, numpy.float32),None,winSize = (10, 10), maxLevel = 5,criteria = self.CRITERIA,flags = 0)
+        if features is None:
+            return []
+        return [ None if status[i] == 0 else (pti[0],pti[1]) for (i,pti) in enumerate(features)]
 
 class TrackingFilterUI(TrackingFilter):
     """
@@ -699,6 +724,7 @@ class TrackingFilterUI(TrackingFilter):
 #            self.track_optical_flow_all_and_check,
             self.check_filter
         ]
+        self.frame_prev=None
 
     def input_filename(self):
         print "Input filenames to use."
@@ -1028,36 +1054,60 @@ class TrackingFilterUI(TrackingFilter):
 
     def modify_frame_to_select_and_trace_particle(self,oframe):
         modifiedframes=[]
-        #self.update_trackingpoint_if_needed(oframe)
-        self.original_frame=numpy.copy(oframe)
         pos=self.get_current_frame_position()
+        if not self.frame_prev is None:
+            if self.direction != 0:
+                self.update_traced_particle_if_needed(self.frame_prev,oframe,self.pos_pre,pos)
+        self.frame_prev=numpy.copy(oframe)
+        self.pos_pre=pos
         
         frame=numpy.copy(oframe)
         g=self.get_gray_image_for_optical_flow(frame)
         frame[:,:,0]=g
         frame[:,:,1]=g
         frame[:,:,2]=g        
-        #frame=self.draw_tracked_pairs_n(frame,pos)
-        #frame=self.draw_tracked_points(frame,pos)
         modifiedframes.append(numpy.copy(frame))
-        #frame=self.draw_tracked_pairs_p(frame,pos)
-        #frame=self.draw_tracked_points(frame,pos)
-        modifiedframes.append(numpy.copy(frame))
-
-        frame=numpy.copy(oframe)
-        #frame=self.draw_tracked_pairs_n(frame,pos)
-        #frame=self.draw_tracked_points(frame,pos)
-        modifiedframes.append(numpy.copy(frame))
+        frame=self.draw_tracing_lines(frame,pos)
         frame=self.draw_traced_particle(frame,pos)
-        #frame=self.draw_tracked_points(frame,pos)
+        modifiedframes.append(numpy.copy(frame))
+        frame=numpy.copy(oframe)
+        modifiedframes.append(numpy.copy(frame))
+        frame=self.draw_tracing_lines(frame,pos)
+        frame=self.draw_traced_particle(frame,pos)
         modifiedframes.append(numpy.copy(frame))
         return modifiedframes
+
+    def draw_tracing_lines(self,frame,pos):
+        """
+        Draw lines between pair of racked points in pos to frame.
+        """
+        for (i,pos_0) in enumerate(self.traced_particle.initial_pos):
+            pt0=self.traced_particle.get_point_int(i,pos)
+            if pt0 is None:
+                continue
+            if pos>pos_0:
+                for tt in range(5):
+                    pt1=self.traced_particle.get_point_int(i,pos-(tt+1))
+                    if pt1 is None:
+                        continue
+                    cv2.line(frame,pt0,pt1,(200-40*tt,200-40*tt,200),1)
+                    pt0=pt1
+            pt0=self.traced_particle.get_point_int(i,pos)
+            if pos<pos_0:
+                for tt in range(5):
+                    pt1=self.traced_particle.get_point_int(i,pos+(tt+1))
+                    if pt1 is None:
+                        continue
+                    cv2.line(frame,pt0,pt1,(100,255,200-40*tt),1)
+                    pt0=pt1
+        return frame
+
 
     def draw_traced_particle(self,frame,pos):
         """
         Draw circle at points in pos to frame.
         """
-        for (i,(pt,sh)) in enumerate(self.traced_particle.x_particles(pos)):
+        for (i,pt,sh) in self.traced_particle.x_particles(pos):
             if sh is None:
                 cv2.line(frame,(pt[0]-5, pt[1]-5),(pt[0]+5, pt[1]+5),(15, 100, 255),1)
                 cv2.line(frame,(pt[0]-5, pt[1]+5),(pt[0]+5, pt[1]-5),(15, 100, 255),1)
@@ -1487,16 +1537,51 @@ class traced_particle:
         self.shape[idnum][pos]=sh
         self.version[idnum][pos]=self.current_version
 
+    def update_particle(self, idnum, pos_pre, pos_cur, pt):
+        self.version[idnum][pos_cur]=self.version[idnum][pos_pre]
+        if pt is None:
+            self.points[idnum][pos_cur]=self.points[idnum][pos_pre]
+            self.shape[idnum][pos_cur]=None
+        else:
+            self.points[idnum][pos_cur]=pt
+            self.shape[idnum][pos_cur]=self.shape[idnum][pos_pre]
+
+    def cleanup_particle(self, pos_pre, pos_cur):
+        for (pti,shi,vi,pos_0_i) in zip(self.points,self.shape,self.version,self.initial_pos):
+            if (pos_cur-pos_0_i)*(pos_cur-pos_pre)<=0:
+                continue
+            if not pos_cur in vi:
+                continue
+            if pos_pre in vi:
+                if vi[pos_pre] <= vi[pos_cur]:
+                    continue
+                if not shi[pos_pre] is None:
+                    continue
+            self.version[idnum].pop(pos_cur)
+            self.points[idnum].pop(pos_cur)
+            self.shape[idnum].pop(pos_cur)
+
+
     def get_point(self, idnum, pos):
         if not pos in self.points[idnum]:
             return None
         return self.points[idnum][pos]
 
+    
+    def get_point_int(self, idnum, pos):
+        pt=self.get_point(idnum, pos)
+        if pt is None:
+            return None
+        return (int(pt[0]),int(pt[1]))
+
     def x_particles(self,pos):
-        for (pt,sh) in zip(self.points,self.shape):
+        for (i,(pt,sh)) in enumerate(zip(self.points,self.shape)):
             if pos in pt:
-                yield (pt[pos],sh[pos])
-        
+                if sh[pos] is None:
+                    yield (i,(int(pt[pos][0]),int(pt[pos][1])),None)
+                else:
+                    yield (i,(int(pt[pos][0]),int(pt[pos][1])),int(sh[pos]))
+
     def get_close_particle(self, pos, x, y, r,exceptid=[]):
         for (i,pt) in enumerate(self.points):
             if not pos in pt:
@@ -1505,7 +1590,22 @@ class traced_particle:
                 if not i in exceptid:
                     return i
         return None
-    
+
+    def x_particles_to_update(self, pos_pre, pos_cur):
+        for (i,(pti,shi,vi,pos_0_i)) in enumerate(zip(self.points,self.shape,self.version,self.initial_pos)):
+            if (pos_cur-pos_0_i)*(pos_cur-pos_pre)<=0:
+                continue
+            if not pos_pre in vi:
+                continue
+            if pos_cur in vi:
+                if vi[pos_cur] >= vi[pos_pre]:
+                    continue
+            if shi[pos_pre] is None:
+                continue
+            if pti[pos_pre] is None:
+                continue
+            yield (i,pti[pos_pre])
+
 if __name__=="__main__":
     import sys, os
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
