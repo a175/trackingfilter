@@ -342,16 +342,17 @@ class PartcleFilter(VideoViewer):
     def apply_filters(self,frame,filters):
         """
         Apply the filters to frame.
-        """
-        
+        """        
         frame=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        fl=numpy.zeros(frame[:,:,0].shape)
-        ma=numpy.zeros(frame[:,:,0].shape)
+        sh=frame[:,:,0].shape
+        fl=numpy.zeros(sh)
+        ma=numpy.zeros(sh)
         for (y,x,r) in filters:
-            (f,m,x0,y0,x1,y1)=self.filter_list[r]
-            if fl[x+x0:x+x1,y+y0:y+y1].shape == f.shape:
-                fl[x+x0:x+x1,y+y0:y+y1]=(fl[x+x0:x+x1,y+y0:y+y1]+f)
-                ma[x+x0:x+x1,y+y0:y+y1]=(ma[x+x0:x+x1,y+y0:y+y1]+m)
+            f=self.filter_list[r].get_image(x,y,sh[0],sh[1])
+            m=self.filter_list[r].get_mask(x,y,sh[0],sh[1])
+            (x0,x1,y0,y1)=self.filter_list[r].get_box(x,y,sh[0],sh[1])
+            fl[x0:x1,y0:y1]=(fl[x0:x1,y0:y1]+f)
+            ma[x0:x1,y0:y1]=(ma[x0:x1,y0:y1]+m)
         ma=numpy.abs(ma-0.5)+0.5
         fl=fl/ma
         fl=cv2.GaussianBlur(fl,(5,5),0)
@@ -359,6 +360,21 @@ class PartcleFilter(VideoViewer):
         frame=cv2.cvtColor(frame, cv2.COLOR_HSV2BGR)
         return frame
 
+    def append_filter_to_dict(self,radius):
+        """
+        Create a stamp with the radius.
+        Append it to the dictionary with key `radius`.
+        """        
+        r=int(radius)
+        self.filter_list[r]=CircleStamp(r,60)
+    
+class CircleStamp:
+    def __init__(self,radius,color):
+        self.radius=radius
+        self.image=numpy.array([[ color*self.filter_weight(i-radius,j-radius,radius)  for j in range(2*radius)] for i in range(2*radius)],numpy.float32)
+        (ret,m)=cv2.threshold(self.image,1,255,cv2.THRESH_TRUNC)
+        self.mask=m
+        
     def filter_weight(self,x,y,r):
         d=numpy.sqrt(x**2+y**2)
         if d>r:
@@ -367,17 +383,27 @@ class PartcleFilter(VideoViewer):
             w=1
         return w
 
-    def append_filter_to_dict(self,radius):
-        """
-        Create a filter with the radius.
-        Append it and its infomation (mask, margin, size)
-        to the dictionary with key `radius`.
-        """
-        
-        r=int(radius)
-        f=numpy.array([[ 60*self.filter_weight(i-r,j-r,radius)  for j in range(2*r)] for i in range(2*r)],numpy.float32)
-        (ret,m)=cv2.threshold(f,1,255,cv2.THRESH_TRUNC)
-        self.filter_list[r]=(f,m,-r,-r,r,r)
+    def get_crop_box(self,x,y,width,height):
+        x0=max(self.radius-x,0)
+        y0=max(self.radius-y,0)
+        x1=min(2*self.radius,self.radius+width-x)
+        y1=min(2*self.radius,self.radius+height-y)
+        return (x0,x1,y0,y1)
+                     
+    def get_image(self,x,y,width,height):
+        (x0,x1,y0,y1)=self.get_crop_box(x,y,width,height)
+        return self.image[x0:x1,y0:y1]
+
+    def get_mask(self,x,y,width,height):
+        (x0,x1,y0,y1)=self.get_crop_box(x,y,width,height)
+        return self.mask[x0:x1,y0:y1]
+
+    def get_box(self,x,y,width,height):
+        x0=max(x-self.radius,0)
+        y0=max(y-self.radius,0)
+        x1=min(x+self.radius,width)
+        y1=min(y+self.radius,height)
+        return (x0,x1,y0,y1)
 
 
 class TrackingFilter(PartcleFilter):
