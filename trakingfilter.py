@@ -284,7 +284,6 @@ class PartcleFilter(VideoViewer):
         """
         Reset positions to apply filter.
         """
-        
         self.filter_position={}
         
     def append_filter_position(self,pos,x,y,r):
@@ -294,7 +293,6 @@ class PartcleFilter(VideoViewer):
         x, y: coordinate (of center of filter).
         r: key of the dictionary of filters.
         """
-        
         if not pos in self.filter_position:
             self.filter_position[pos]=[]
         self.filter_position[pos].append((x,y,r))
@@ -305,8 +303,7 @@ class PartcleFilter(VideoViewer):
         verbose: Comment each 100/verbose %  if verbose>0
                  Comment each frame  if verbose=0
                  Ommit comment if verbose<0
-        """
-        
+        """        
         fps=self.original.get(cv2.cv.CV_CAP_PROP_FPS)
         n_frames=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
         if verbose>0:
@@ -342,16 +339,17 @@ class PartcleFilter(VideoViewer):
     def apply_filters(self,frame,filters):
         """
         Apply the filters to frame.
-        """
-        
+        """        
         frame=cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        fl=numpy.zeros(frame[:,:,0].shape)
-        ma=numpy.zeros(frame[:,:,0].shape)
+        sh=frame[:,:,0].shape
+        fl=numpy.zeros(sh)
+        ma=numpy.zeros(sh)
         for (y,x,r) in filters:
-            (f,m,x0,y0,x1,y1)=self.filter_list[r]
-            if fl[x+x0:x+x1,y+y0:y+y1].shape == f.shape:
-                fl[x+x0:x+x1,y+y0:y+y1]=(fl[x+x0:x+x1,y+y0:y+y1]+f)
-                ma[x+x0:x+x1,y+y0:y+y1]=(ma[x+x0:x+x1,y+y0:y+y1]+m)
+            f=self.filter_list[r].get_image(x,y,sh[0],sh[1])
+            m=self.filter_list[r].get_mask(x,y,sh[0],sh[1])
+            (x0,x1,y0,y1)=self.filter_list[r].get_box(x,y,sh[0],sh[1])
+            fl[x0:x1,y0:y1]=(fl[x0:x1,y0:y1]+f)
+            ma[x0:x1,y0:y1]=(ma[x0:x1,y0:y1]+m)
         ma=numpy.abs(ma-0.5)+0.5
         fl=fl/ma
         fl=cv2.GaussianBlur(fl,(5,5),0)
@@ -359,6 +357,21 @@ class PartcleFilter(VideoViewer):
         frame=cv2.cvtColor(frame, cv2.COLOR_HSV2BGR)
         return frame
 
+    def append_filter_to_dict(self,radius):
+        """
+        Create a stamp with the radius.
+        Append it to the dictionary with key `radius`.
+        """        
+        r=int(radius)
+        self.filter_list[r]=CircleStamp(r,60)
+    
+class CircleStamp:
+    def __init__(self,radius,color):
+        self.radius=radius
+        self.image=numpy.array([[ color*self.filter_weight(i-radius,j-radius,radius)  for j in range(2*radius)] for i in range(2*radius)],numpy.float32)
+        (ret,m)=cv2.threshold(self.image,1,255,cv2.THRESH_TRUNC)
+        self.mask=m
+        
     def filter_weight(self,x,y,r):
         d=numpy.sqrt(x**2+y**2)
         if d>r:
@@ -367,17 +380,27 @@ class PartcleFilter(VideoViewer):
             w=1
         return w
 
-    def append_filter_to_dict(self,radius):
-        """
-        Create a filter with the radius.
-        Append it and its infomation (mask, margin, size)
-        to the dictionary with key `radius`.
-        """
-        
-        r=int(radius)
-        f=numpy.array([[ 60*self.filter_weight(i-r,j-r,radius)  for j in range(2*r)] for i in range(2*r)],numpy.float32)
-        (ret,m)=cv2.threshold(f,1,255,cv2.THRESH_TRUNC)
-        self.filter_list[r]=(f,m,-r,-r,r,r)
+    def get_crop_box(self,x,y,width,height):
+        x0=max(self.radius-x,0)
+        y0=max(self.radius-y,0)
+        x1=min(2*self.radius,self.radius+width-x)
+        y1=min(2*self.radius,self.radius+height-y)
+        return (x0,x1,y0,y1)
+                     
+    def get_image(self,x,y,width,height):
+        (x0,x1,y0,y1)=self.get_crop_box(x,y,width,height)
+        return self.image[x0:x1,y0:y1]
+
+    def get_mask(self,x,y,width,height):
+        (x0,x1,y0,y1)=self.get_crop_box(x,y,width,height)
+        return self.mask[x0:x1,y0:y1]
+
+    def get_box(self,x,y,width,height):
+        x0=max(x-self.radius,0)
+        y0=max(y-self.radius,0)
+        x1=min(x+self.radius,width)
+        y1=min(y+self.radius,height)
+        return (x0,x1,y0,y1)
 
 
 class TrackingFilter(PartcleFilter):
@@ -393,8 +416,6 @@ class TrackingFilter(PartcleFilter):
         self.features=None
         self.CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)
         
-        self.default_direction=1
-
     def reset_traced_particle(self):
         self.traced_particle=traced_particle()
     
@@ -647,7 +668,7 @@ class TrackingFilterUI(TrackingFilter):
         self.set_gray_type("GRAY")
         self.frame_variation_to_show=-1
         self.set_modify_frame(self.modify_frame_to_select_grayimage)
-        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         flag=self.showvideo(0, "frame",
                             xkeyevent=self.select_grayimage_by_key,
                             xkeyeventtitle="choose gray type")
@@ -668,8 +689,7 @@ class TrackingFilterUI(TrackingFilter):
         print ""
         self.frame_variation_to_show=-1
         self.set_modify_frame(self.modify_frame_to_select_grayimage)
-
-        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         flag=self.showvideo(0,"frame")
         cv2.destroyWindow("frame")
         if flag <= 0:
@@ -743,9 +763,7 @@ class TrackingFilterUI(TrackingFilter):
         print ""
         self.frame_variation_to_show=-1
         self.set_modify_frame(self.modify_frame_to_select_masktype)
-
-
-        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         flag=self.showvideo(0,"frame",
                             xkeyevent=self.select_masktype_by_key,
                             xkeyeventtitle="choose mask type")
@@ -782,7 +800,6 @@ class TrackingFilterUI(TrackingFilter):
         print "+","mouse drag: append the rectangle;"
         self.event_x=None
         self.inputted_data=[]
-        self.default_direction=0
         self.frame_variation_to_show=-1
         self.set_modify_frame(self.modify_frame_to_select_grayimage)
 
@@ -842,7 +859,7 @@ class TrackingFilterUI(TrackingFilter):
         self.set_modify_frame(self.modify_frame_to_select_templatematchingtype)
 
 
-        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         flag=self.showvideo(0,"frame",
                             xkeyevent=self.select_templatematchingtype_by_key,
                             xkeyeventtitle="choose apply template matching or not")
@@ -910,7 +927,7 @@ class TrackingFilterUI(TrackingFilter):
         g=self.get_gray_image_for_optical_flow(frame)
         frame[:,:,0]=g
         frame[:,:,1]=g
-        frame[:,:,2]=g        
+        frame[:,:,2]=g
         modifiedframes.append(numpy.copy(frame))
         frame=self.draw_tracing_lines(frame,pos)
         frame=self.draw_traced_particle(frame,pos)
@@ -1057,7 +1074,6 @@ class TrackingFilterUI(TrackingFilter):
                 cv2.circle(self.mouse_event_layer, (x+dx,y+dy), 1,self.COLOR_MOUSE_EVENT_SELECTING, -1, 8, 10)
                 cv2.circle(self.mouse_event_layer, (x+dx,y+dy), int(self.radius_of_filter),self.COLOR_MOUSE_EVENT_SELECTING, 1)
             cv2.line(self.mouse_event_layer,(int(self.radius_of_filter),0),(0,int(self.radius_of_filter)),self.COLOR_MOUSE_EVENT_SELECT,1)
-            
 
     def modify_frame_to_check_filter(self,oframe):
         modifiedframes=[]
@@ -1116,7 +1132,7 @@ class TrackingFilterUI(TrackingFilter):
         If the function returns negative,
         then runs previouts function.
         If the function returns zero,
-        then exit.        
+        then exit.
         """
         currentstep=initstep
         while 0 <= currentstep and currentstep < len(self.runlevel):
@@ -1135,7 +1151,7 @@ class TrackingFilterUI(TrackingFilter):
                 print "``` python"
                 print "tf.run(",currentstep,")"
                 print "```"
-                print ""                
+                print ""
                 break
             print "\n***\n"
 
@@ -1282,3 +1298,5 @@ if __name__=="__main__":
     tf=TrackingFilterUI()
     tf.run()
     cv2.destroyAllWindows()
+
+
