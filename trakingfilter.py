@@ -621,8 +621,9 @@ class TrackingFilterUI(TrackingFilter):
         print "``` python"
         print "import numpy"
         print "import cv2"
+        print "import trackingfilter"
         print ""
-        print "tf=TrackingFilterUI()"
+        print "tf=trackingfilter.TrackingFilterUI()"
         print "original=cv2.VideoCapture(\"%s\")" % video
         print "tf.set_original(original)"
         print "tf.set_outfile(\"%s\")" % outfile
