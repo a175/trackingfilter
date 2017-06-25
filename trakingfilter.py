@@ -284,7 +284,6 @@ class PartcleFilter(VideoViewer):
         """
         Reset positions to apply filter.
         """
-        
         self.filter_position={}
         
     def append_filter_position(self,pos,x,y,r):
@@ -294,7 +293,6 @@ class PartcleFilter(VideoViewer):
         x, y: coordinate (of center of filter).
         r: key of the dictionary of filters.
         """
-        
         if not pos in self.filter_position:
             self.filter_position[pos]=[]
         self.filter_position[pos].append((x,y,r))
@@ -305,8 +303,7 @@ class PartcleFilter(VideoViewer):
         verbose: Comment each 100/verbose %  if verbose>0
                  Comment each frame  if verbose=0
                  Ommit comment if verbose<0
-        """
-        
+        """        
         fps=self.original.get(cv2.cv.CV_CAP_PROP_FPS)
         n_frames=self.original.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
         if verbose>0:
@@ -419,8 +416,6 @@ class TrackingFilter(PartcleFilter):
         self.features=None
         self.CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)
         
-        self.default_direction=1
-
     def reset_traced_particle(self):
         self.traced_particle=traced_particle()
     
@@ -672,7 +667,7 @@ class TrackingFilterUI(TrackingFilter):
         self.set_gray_type("GRAY")
         self.frame_variation_to_show=-1
         self.set_modify_frame(self.modify_frame_to_select_grayimage)
-        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         flag=self.showvideo(0, "frame",
                             xkeyevent=self.select_grayimage_by_key,
                             xkeyeventtitle="choose gray type")
@@ -693,8 +688,7 @@ class TrackingFilterUI(TrackingFilter):
         print ""
         self.frame_variation_to_show=-1
         self.set_modify_frame(self.modify_frame_to_select_grayimage)
-
-        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         flag=self.showvideo(0,"frame")
         cv2.destroyWindow("frame")
         if flag <= 0:
@@ -768,9 +762,7 @@ class TrackingFilterUI(TrackingFilter):
         print ""
         self.frame_variation_to_show=-1
         self.set_modify_frame(self.modify_frame_to_select_masktype)
-
-
-        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         flag=self.showvideo(0,"frame",
                             xkeyevent=self.select_masktype_by_key,
                             xkeyeventtitle="choose mask type")
@@ -807,7 +799,6 @@ class TrackingFilterUI(TrackingFilter):
         print "+","mouse drag: append the rectangle;"
         self.event_x=None
         self.inputted_data=[]
-        self.default_direction=0
         self.frame_variation_to_show=-1
         self.set_modify_frame(self.modify_frame_to_select_grayimage)
 
@@ -867,7 +858,7 @@ class TrackingFilterUI(TrackingFilter):
         self.set_modify_frame(self.modify_frame_to_select_templatematchingtype)
 
 
-        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)        
+        cv2.namedWindow("frame", cv2.CV_WINDOW_AUTOSIZE)
         flag=self.showvideo(0,"frame",
                             xkeyevent=self.select_templatematchingtype_by_key,
                             xkeyeventtitle="choose apply template matching or not")
@@ -935,7 +926,7 @@ class TrackingFilterUI(TrackingFilter):
         g=self.get_gray_image_for_optical_flow(frame)
         frame[:,:,0]=g
         frame[:,:,1]=g
-        frame[:,:,2]=g        
+        frame[:,:,2]=g
         modifiedframes.append(numpy.copy(frame))
         frame=self.draw_tracing_lines(frame,pos)
         frame=self.draw_traced_particle(frame,pos)
@@ -1082,7 +1073,6 @@ class TrackingFilterUI(TrackingFilter):
                 cv2.circle(self.mouse_event_layer, (x+dx,y+dy), 1,self.COLOR_MOUSE_EVENT_SELECTING, -1, 8, 10)
                 cv2.circle(self.mouse_event_layer, (x+dx,y+dy), int(self.radius_of_filter),self.COLOR_MOUSE_EVENT_SELECTING, 1)
             cv2.line(self.mouse_event_layer,(int(self.radius_of_filter),0),(0,int(self.radius_of_filter)),self.COLOR_MOUSE_EVENT_SELECT,1)
-            
 
     def modify_frame_to_check_filter(self,oframe):
         modifiedframes=[]
@@ -1141,7 +1131,7 @@ class TrackingFilterUI(TrackingFilter):
         If the function returns negative,
         then runs previouts function.
         If the function returns zero,
-        then exit.        
+        then exit.
         """
         currentstep=initstep
         while 0 <= currentstep and currentstep < len(self.runlevel):
@@ -1160,7 +1150,7 @@ class TrackingFilterUI(TrackingFilter):
                 print "``` python"
                 print "tf.run(",currentstep,")"
                 print "```"
-                print ""                
+                print ""
                 break
             print "\n***\n"
 
@@ -1307,3 +1297,5 @@ if __name__=="__main__":
     tf=TrackingFilterUI()
     tf.run()
     cv2.destroyAllWindows()
+
+
